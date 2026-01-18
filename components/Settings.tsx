@@ -4,7 +4,7 @@ import { Client, TaxRate, LogActionType, LogEntityType } from '../types';
 import { ATECO_ACTIVITIES } from '../constants';
 import { Card } from './Card';
 import { Button } from './Button';
-import { CheckCircle, AlertCircle, Briefcase, Save, Loader2 } from 'lucide-react';
+import { CheckCircle, AlertCircle, Briefcase, Save, Loader2, Cloud } from 'lucide-react';
 import { createClientStructure } from '../utils/googleDrive';
 
 interface SettingsProps {
@@ -51,35 +51,34 @@ export const Settings: React.FC<SettingsProps> = ({ client, onUpdateClient, onLo
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    // 1. Salvataggio locale
+    // 1. Salvataggio locale immediato
     onUpdateClient(formData);
     onLog('UPDATE', 'SETTINGS', `Aggiornata anagrafica/impostazioni`, client.id);
     setHasChanges(false);
 
     // 2. Logica Google Drive Automatica
-    // Verifichiamo se l'utente è autenticato su Drive controllando il token globale di gapi
     const isDriveAuth = typeof window !== 'undefined' && 
                         (window as any).gapi?.client?.getToken() !== null;
     
     if (isDriveAuth) {
       const confirmDrive = window.confirm(
-        `Dati salvati localmente. Vuoi creare/aggiornare anche la struttura cartelle su Google Drive per "${formData.name}"?`
+        `Dati salvati. Vuoi creare o aggiornare la struttura cartelle su Google Drive per "${formData.name}" nella cartella Studio Palmas?`
       );
 
       if (confirmDrive) {
         setIsCreatingFolders(true);
         try {
           await createClientStructure(formData.name);
-          alert('Struttura cartelle creata con successo su Google Drive!');
+          alert('Operazione completata! Le cartelle sono pronte su Google Drive.');
         } catch (err) {
           console.error(err);
-          alert('Errore nella creazione delle cartelle su Drive. Verifica la connessione e i permessi.');
+          alert('Errore Drive: verifica permessi o connessione.');
         } finally {
           setIsCreatingFolders(false);
         }
       }
     } else {
-      alert('Anagrafica salvata correttamente localmente. (Nota: Google Drive non connesso)');
+      alert('Anagrafica salvata. (Drive non connesso)');
     }
   };
 
@@ -93,22 +92,24 @@ export const Settings: React.FC<SettingsProps> = ({ client, onUpdateClient, onLo
           {isCreatingFolders && (
             <div className="flex items-center text-xs text-indigo-600 animate-pulse mt-1">
               <Loader2 className="w-3 h-3 mr-1 animate-spin" />
-              Sincronizzazione Drive in corso...
+              Sincronizzazione Drive Studio Palmas...
             </div>
           )}
         </div>
-        <Button 
-          onClick={handleSave} 
-          disabled={!hasChanges || isCreatingFolders}
-          className={hasChanges ? "ring-2 ring-indigo-500 ring-offset-2" : ""}
-        >
-          {isCreatingFolders ? (
-            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-          ) : (
-            <Save className="w-4 h-4 mr-2" />
-          )}
-          {isCreatingFolders ? 'Creazione...' : 'Salva Modifiche'}
-        </Button>
+        <div className="flex gap-2">
+           <Button 
+            onClick={handleSave} 
+            disabled={!hasChanges || isCreatingFolders}
+            className={hasChanges ? "ring-2 ring-indigo-500 ring-offset-2" : ""}
+          >
+            {isCreatingFolders ? (
+              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+            ) : (
+              <Save className="w-4 h-4 mr-2" />
+            )}
+            {isCreatingFolders ? 'Creazione...' : 'Salva Modifiche'}
+          </Button>
+        </div>
       </div>
       
       <Card title="Attività Professionale (ATECO)" className="border-t-4 border-t-indigo-600">
@@ -151,10 +152,6 @@ export const Settings: React.FC<SettingsProps> = ({ client, onUpdateClient, onLo
                  <div className="bg-white p-3 rounded border border-indigo-100">
                    <p className="text-xs text-gray-500 uppercase font-semibold">Inquadramento INPS</p>
                    <p className="text-sm font-medium text-gray-900">{selectedActivity.inpsType}</p>
-                 </div>
-                 <div className="col-span-2 bg-white p-3 rounded border border-indigo-100">
-                   <p className="text-xs text-gray-500 uppercase font-semibold">Regime IVA</p>
-                   <p className="text-sm font-medium text-gray-900">{selectedActivity.vatRegime}</p>
                  </div>
               </div>
             </div>
@@ -207,19 +204,6 @@ export const Settings: React.FC<SettingsProps> = ({ client, onUpdateClient, onLo
             </select>
           </div>
 
-           <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Stato Cliente</label>
-              <select
-                name="status"
-                value={formData.status}
-                onChange={handleChange}
-                className="w-full rounded-md border-gray-300 border p-2 focus:ring-indigo-500"
-              >
-                <option value="active">Attivo</option>
-                <option value="ceased">Cessato / Storico</option>
-              </select>
-            </div>
-
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Note Interne Studio</label>
               <textarea
@@ -229,10 +213,6 @@ export const Settings: React.FC<SettingsProps> = ({ client, onUpdateClient, onLo
                 className="w-full rounded-md border-gray-300 border p-2 focus:ring-indigo-500 h-24"
                 placeholder="Note riservate allo studio..."
               />
-            </div>
-            
-            <div className="text-xs text-gray-400 mt-4 text-center">
-              Parametri globali (limite ricavi, ecc.) gestiti dall'amministratore.
             </div>
         </form>
       </Card>
