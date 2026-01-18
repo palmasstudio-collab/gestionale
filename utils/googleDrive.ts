@@ -3,13 +3,13 @@
 
 // CONFIGURAZIONE
 // ---------------------------------------------------------
-// IL TUO CLIENT ID (Inserito correttamente)
+// IL TUO CLIENT ID
 const CLIENT_ID = "459844148501-9fc3ns8fpd7dl7pcgmiodbnh53vd3hol.apps.googleusercontent.com"; 
 
-// ID della cartella Master "Studio Palmas" (per mantenere la gerarchia dello studio)
+// ID della cartella Master "Studio Palmas"
 const MASTER_FOLDER_ID = "1ogkOOPaH3EwYUV-DO-GHgZ0HswocM7E8";
 
-// Lascia vuoto se non hai creato una API KEY (non è obbligatoria con OAuth)
+// API KEY (opzionale con OAuth2, ma utile per evitare limiti di quota nel caricamento dei discovery docs)
 const API_KEY = ""; 
 
 // Configurazione standard di Google
@@ -69,9 +69,16 @@ export const initGoogleDrive = (updateSigninStatus: (avail: boolean) => void) =>
     }
   }
 
-  // Carica gli script se presenti nella pagina
-  if (typeof window.gapi !== 'undefined') gapiLoaded();
-  if (typeof window.google !== 'undefined') gisLoaded();
+  // Carica gli script se presenti nella pagina (con retry in caso di caricamento asincrono lento)
+  const tryInit = () => {
+    if (typeof window.gapi !== 'undefined') gapiLoaded();
+    else setTimeout(tryInit, 500);
+
+    if (typeof window.google !== 'undefined' && window.google.accounts) gisLoaded();
+    else setTimeout(tryInit, 500);
+  };
+
+  tryInit();
 };
 
 // 2. GESTIONE LOGIN (Popup)
@@ -91,7 +98,6 @@ export const handleAuthClick = async () => {
       resolve();
     };
 
-    // Richiede il token (forza il popup se serve, o lo rinnova silenziamente)
     if (window.gapi.client.getToken() === null) {
       tokenClient.requestAccessToken({prompt: 'consent'});
     } else {
@@ -104,14 +110,11 @@ export const handleAuthClick = async () => {
 
 // Crea una cartella
 export const createFolder = async (name: string, parentId?: string) => {
-  // CONTROLLO FONDAMENTALE PER EVITARE L'ERRORE "UNDEFINED"
   if (!window.gapi || !window.gapi.client || !window.gapi.client.drive) {
     throw new Error("Google Drive non è pronto. Attendi il caricamento o ricarica la pagina.");
   }
 
   const cleanName = name.replace(/'/g, "\\'");
-  
-  // Cerca se esiste già
   const query = `name = '${cleanName}' and mimeType = 'application/vnd.google-apps.folder' and trashed = false${parentId ? ` and '${parentId}' in parents` : ''}`;
   
   try {
@@ -122,7 +125,6 @@ export const createFolder = async (name: string, parentId?: string) => {
       return existing.result.files[0].id;
     }
 
-    // Se non esiste, crea
     const metadata = {
       name: name,
       mimeType: 'application/vnd.google-apps.folder',
@@ -139,15 +141,14 @@ export const createFolder = async (name: string, parentId?: string) => {
   }
 };
 
-// STRUTTURA CLIENTE (Quella richiesta dallo Studio Palmas)
+// STRUTTURA CLIENTE (Specifica Studio Palmas)
 export const createClientStructure = async (clientName: string) => {
   try {
     console.log(`Inizio creazione struttura per: ${clientName}`);
     
-    // 1. Crea cartella Padre (all'interno della cartella Master dello Studio Palmas)
+    // Crea cartella dentro la MASTER dello Studio
     const rootFolderId = await createFolder(clientName, MASTER_FOLDER_ID);
     
-    // 2. Crea sottocartelle
     const subfolders = [
       '01_Fatture_Emesse', 
       '02_Fatture_Acquisto_Spese', 
@@ -170,10 +171,9 @@ export const createClientStructure = async (clientName: string) => {
 export const uploadBackup = async (data: any) => {
   if (!window.gapi?.client?.drive) throw new Error("Drive API non caricata");
 
-  const fileContent = JSON.stringify(data, null, 2); // Formattato leggibile
+  const fileContent = JSON.stringify(data, null, 2);
   const file = new Blob([fileContent], {type: 'application/json'});
   
-  // Cerca se esiste il file di backup
   const response = await window.gapi.client.drive.files.list({
     q: `name = '${BACKUP_FILENAME}' and trashed = false`,
     fields: 'files(id, name)',
@@ -181,11 +181,9 @@ export const uploadBackup = async (data: any) => {
   
   const files = response.result.files;
   const accessToken = window.gapi.client.getToken().access_token;
-
   const metadataBlob = new Blob([JSON.stringify({ name: BACKUP_FILENAME, mimeType: 'application/json' })], { type: 'application/json' });
 
   if (files && files.length > 0) {
-    // AGGIORNA file esistente
     const fileId = files[0].id;
     const url = 'https://www.googleapis.com/upload/drive/v3/files/' + fileId + '?uploadType=multipart';
     const form = new FormData();
@@ -199,7 +197,6 @@ export const uploadBackup = async (data: any) => {
     });
     return { status: 'updated', id: fileId };
   } else {
-    // CREA nuovo file
     const url = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
     const form = new FormData();
     form.append('metadata', metadataBlob);
