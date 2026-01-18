@@ -51,12 +51,10 @@ export const initGoogleDrive = (apiKey: string, clientId: string, updateSigninSt
     }
   }
 
-  // Check if scripts are loaded
   if (typeof window.gapi !== 'undefined') gapiLoaded();
   if (typeof window.google !== 'undefined') gisLoaded();
 };
 
-// 2. Handle Login
 export const handleAuthClick = async () => {
   return new Promise<void>((resolve, reject) => {
     tokenClient.callback = async (resp: any) => {
@@ -66,7 +64,6 @@ export const handleAuthClick = async () => {
       resolve();
     };
     
-    // Request access token
     if (window.gapi.client.getToken() === null) {
       tokenClient.requestAccessToken({prompt: 'consent'});
     } else {
@@ -75,32 +72,70 @@ export const handleAuthClick = async () => {
   });
 };
 
-// 3. Upload File (Create or Update)
+// --- NUOVE FUNZIONI PER CARTELLE ---
+
+/**
+ * Crea una cartella su Google Drive
+ */
+export const createFolder = async (name: string, parentId?: string) => {
+  const metadata = {
+    name: name,
+    mimeType: 'application/vnd.google-apps.folder',
+    parents: parentId ? [parentId] : []
+  };
+
+  const response = await window.gapi.client.drive.files.create({
+    resource: metadata,
+    fields: 'id'
+  });
+
+  return response.result.id;
+};
+
+/**
+ * Crea la struttura completa per un nuovo cliente
+ */
+export const createClientStructure = async (clientName: string) => {
+  try {
+    // 1. Crea cartella principale Cliente
+    const rootFolderId = await createFolder(clientName);
+    
+    // 2. Crea sottocartelle
+    const subfolders = [
+      '01_Fatture_Emesse',
+      '02_Fatture_Acquisto_Spese',
+      '03_F24_Tasse_INPS',
+      '04_Contratti_Preventivi'
+    ];
+
+    for (const folderName of subfolders) {
+      await createFolder(folderName, rootFolderId);
+    }
+
+    return rootFolderId;
+  } catch (error) {
+    console.error("Errore durante la creazione della struttura cartelle:", error);
+    throw error;
+  }
+};
+
+// --- FUNZIONI BACKUP ESISTENTI ---
+
 export const uploadBackup = async (data: any) => {
   const fileContent = JSON.stringify(data);
   const file = new Blob([fileContent], {type: 'application/json'});
   
-  // Check if file exists
   const response = await window.gapi.client.drive.files.list({
     q: `name = '${BACKUP_FILENAME}' and trashed = false`,
     fields: 'files(id, name)',
   });
   
   const files = response.result.files;
-  
-  const metadata = {
-    name: BACKUP_FILENAME,
-    mimeType: 'application/json',
-  };
-
   const accessToken = window.gapi.client.getToken().access_token;
 
   if (files && files.length > 0) {
-    // Update existing file
     const fileId = files[0].id;
     const url = 'https://www.googleapis.com/upload/drive/v3/files/' + fileId + '?uploadType=multipart';
-    
-    // Use raw fetch for upload because gapi client logic for multipart is verbose
     const form = new FormData();
     form.append('metadata', new Blob([JSON.stringify({ name: BACKUP_FILENAME, mimeType: 'application/json' })], { type: 'application/json' }));
     form.append('file', file);
@@ -111,12 +146,10 @@ export const uploadBackup = async (data: any) => {
       body: form
     });
     return { status: 'updated', id: fileId };
-
   } else {
-    // Create new file
     const url = 'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
     const form = new FormData();
-    form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+    form.append('metadata', new Blob([JSON.stringify({ name: BACKUP_FILENAME, mimeType: 'application/json' })], { type: 'application/json' }));
     form.append('file', file);
 
     const res = await fetch(url, {
@@ -129,7 +162,6 @@ export const uploadBackup = async (data: any) => {
   }
 };
 
-// 4. Download File
 export const downloadBackup = async () => {
   const response = await window.gapi.client.drive.files.list({
     q: `name = '${BACKUP_FILENAME}' and trashed = false`,
@@ -137,9 +169,7 @@ export const downloadBackup = async () => {
   });
 
   const files = response.result.files;
-  if (!files || files.length === 0) {
-    throw new Error("Nessun backup trovato.");
-  }
+  if (!files || files.length === 0) throw new Error("Nessun backup trovato.");
 
   const fileId = files[0].id;
   const result = await window.gapi.client.drive.files.get({
@@ -147,5 +177,5 @@ export const downloadBackup = async () => {
     alt: 'media',
   });
 
-  return result.body; // JSON string
+  return result.body;
 };
