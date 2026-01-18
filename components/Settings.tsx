@@ -4,7 +4,7 @@ import { Client, TaxRate, LogActionType, LogEntityType } from '../types';
 import { ATECO_ACTIVITIES } from '../constants';
 import { Card } from './Card';
 import { Button } from './Button';
-import { CheckCircle, AlertCircle, Briefcase, Save, Loader2 } from 'lucide-react';
+import { Save, Loader2 } from 'lucide-react';
 import { createClientStructure, handleAuthClick } from '../utils/googleDrive';
 
 interface SettingsProps {
@@ -45,18 +45,16 @@ export const Settings: React.FC<SettingsProps> = ({ client, onUpdateClient, onLo
     onLog('UPDATE', 'SETTINGS', `Aggiornata anagrafica`, client.id);
     setHasChanges(false);
 
-    // Controlla se abbiamo il permesso di scrivere su Drive
     const isDriveAuth = typeof window !== 'undefined' && (window as any).gapi?.client?.getToken() !== null;
     
-    if (confirm(`Dati salvati in locale.\n\nVuoi creare la struttura cartelle su Google Drive Studio Palmas per questo cliente?`)) {
+    if (confirm(`Dati salvati in locale.\n\nVuoi creare la struttura cartelle su Google Drive per questo cliente?`)) {
       if (!isDriveReady) {
-        alert("Google Drive non è ancora pronto. Riprova tra qualche istante.");
+        alert("Sincronizzazione Google Drive in corso... Attendi un istante.");
         return;
       }
 
       setIsCreatingFolders(true);
       try {
-        // Se non autenticato, chiedi il login al volo
         if (!isDriveAuth) {
           await handleAuthClick();
         }
@@ -64,8 +62,9 @@ export const Settings: React.FC<SettingsProps> = ({ client, onUpdateClient, onLo
         await createClientStructure(formData.name);
         alert('Struttura cartelle creata con successo in Google Drive!');
       } catch (err: any) {
-        console.error(err);
-        alert('Errore Drive: ' + (err.message || 'Impossibile creare le cartelle. Verificare la connessione.'));
+        if (err.error !== 'access_denied') {
+          alert('Errore Drive: ' + (err.message || 'Verificare la connessione o l\'accesso Google.'));
+        }
       } finally {
         setIsCreatingFolders(false);
       }
