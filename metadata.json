@@ -1,0 +1,5 @@
+{
+  "name": "Forfettario Pro",
+  "description": "A professional accounting dashboard tailored for the Italian 'Regime Forfettario'. Features invoice management, real-time tax estimation, limit monitoring, and an AI fiscal advisor.",
+  "requestFramePermissions": []
+}
