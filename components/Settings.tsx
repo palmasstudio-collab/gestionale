@@ -5,15 +5,16 @@ import { ATECO_ACTIVITIES } from '../constants';
 import { Card } from './Card';
 import { Button } from './Button';
 import { CheckCircle, AlertCircle, Briefcase, Save, Loader2 } from 'lucide-react';
-import { createClientStructure } from '../utils/googleDrive';
+import { createClientStructure, handleAuthClick } from '../utils/googleDrive';
 
 interface SettingsProps {
   client: Client;
   onUpdateClient: (client: Client) => void;
   onLog: (action: LogActionType, entity: LogEntityType, description: string, clientId?: string) => void;
+  isDriveReady: boolean;
 }
 
-export const Settings: React.FC<SettingsProps> = ({ client, onUpdateClient, onLog }) => {
+export const Settings: React.FC<SettingsProps> = ({ client, onUpdateClient, onLog, isDriveReady }) => {
   const [formData, setFormData] = useState<Client>(client);
   const [hasChanges, setHasChanges] = useState(false);
   const [isCreatingFolders, setIsCreatingFolders] = useState(false);
@@ -44,21 +45,29 @@ export const Settings: React.FC<SettingsProps> = ({ client, onUpdateClient, onLo
     onLog('UPDATE', 'SETTINGS', `Aggiornata anagrafica`, client.id);
     setHasChanges(false);
 
+    // Controlla se abbiamo il permesso di scrivere su Drive
     const isDriveAuth = typeof window !== 'undefined' && (window as any).gapi?.client?.getToken() !== null;
     
-    if (isDriveAuth) {
-      const confirmDrive = window.confirm(`Vuoi creare/aggiornare le cartelle su Google Drive per lo Studio Palmas?`);
-      if (confirmDrive) {
-        setIsCreatingFolders(true);
-        try {
-          await createClientStructure(formData.name);
-          alert('Struttura cartelle creata con successo!');
-        } catch (err) {
-          console.error(err);
-          alert('Errore durante la creazione cartelle. Controlla il Client ID e i permessi.');
-        } finally {
-          setIsCreatingFolders(false);
+    if (confirm(`Dati salvati in locale.\n\nVuoi creare la struttura cartelle su Google Drive Studio Palmas per questo cliente?`)) {
+      if (!isDriveReady) {
+        alert("Google Drive non è ancora pronto. Riprova tra qualche istante.");
+        return;
+      }
+
+      setIsCreatingFolders(true);
+      try {
+        // Se non autenticato, chiedi il login al volo
+        if (!isDriveAuth) {
+          await handleAuthClick();
         }
+        
+        await createClientStructure(formData.name);
+        alert('Struttura cartelle creata con successo in Google Drive!');
+      } catch (err: any) {
+        console.error(err);
+        alert('Errore Drive: ' + (err.message || 'Impossibile creare le cartelle. Verificare la connessione.'));
+      } finally {
+        setIsCreatingFolders(false);
       }
     }
   };
