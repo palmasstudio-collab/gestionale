@@ -1,9 +1,13 @@
-// --- utils/googleDrive.ts ---
+
+// Utility per l'integrazione con Google Drive API v3 - Studio Palmas
 
 // CONFIGURAZIONE
 // ---------------------------------------------------------
 // IL TUO CLIENT ID (Inserito correttamente)
 const CLIENT_ID = "459844148501-9fc3ns8fpd7dl7pcgmiodbnh53vd3hol.apps.googleusercontent.com"; 
+
+// ID della cartella Master "Studio Palmas" (per mantenere la gerarchia dello studio)
+const MASTER_FOLDER_ID = "1ogkOOPaH3EwYUV-DO-GHgZ0HswocM7E8";
 
 // Lascia vuoto se non hai creato una API KEY (non è obbligatoria con OAuth)
 const API_KEY = ""; 
@@ -29,25 +33,33 @@ export const initGoogleDrive = (updateSigninStatus: (avail: boolean) => void) =>
   
   const gapiLoaded = () => {
     window.gapi.load('client', async () => {
-      await window.gapi.client.init({
-        apiKey: API_KEY,
-        discoveryDocs: [DISCOVERY_DOC],
-      });
-      gapiInited = true;
-      console.log("GAPI (Modulo Client) caricato.");
-      checkStatus();
+      try {
+        await window.gapi.client.init({
+          apiKey: API_KEY,
+          discoveryDocs: [DISCOVERY_DOC],
+        });
+        gapiInited = true;
+        console.log("GAPI (Modulo Client) caricato.");
+        checkStatus();
+      } catch (err) {
+        console.error("Errore inizializzazione GAPI:", err);
+      }
     });
   }
 
   const gisLoaded = () => {
-    tokenClient = window.google.accounts.oauth2.initTokenClient({
-      client_id: CLIENT_ID,
-      scope: SCOPES,
-      callback: '', // Definito al momento del click
-    });
-    gisInited = true;
-    console.log("GIS (Modulo Login) caricato.");
-    checkStatus();
+    try {
+      tokenClient = window.google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID,
+        scope: SCOPES,
+        callback: '', // Definito al momento del click
+      });
+      gisInited = true;
+      console.log("GIS (Modulo Login) caricato.");
+      checkStatus();
+    } catch (err) {
+      console.error("Errore inizializzazione GIS:", err);
+    }
   }
 
   const checkStatus = () => {
@@ -73,6 +85,7 @@ export const handleAuthClick = async () => {
     tokenClient.callback = async (resp: any) => {
       if (resp.error !== undefined) {
         reject(resp);
+        return;
       }
       console.log("Login effettuato con successo!");
       resolve();
@@ -126,13 +139,13 @@ export const createFolder = async (name: string, parentId?: string) => {
   }
 };
 
-// STRUTTURA CLIENTE (Quella che volevi tu)
+// STRUTTURA CLIENTE (Quella richiesta dallo Studio Palmas)
 export const createClientStructure = async (clientName: string) => {
   try {
     console.log(`Inizio creazione struttura per: ${clientName}`);
     
-    // 1. Crea cartella Padre (es. "Mario Rossi - 2024")
-    const rootFolderId = await createFolder(clientName);
+    // 1. Crea cartella Padre (all'interno della cartella Master dello Studio Palmas)
+    const rootFolderId = await createFolder(clientName, MASTER_FOLDER_ID);
     
     // 2. Crea sottocartelle
     const subfolders = [
@@ -155,7 +168,7 @@ export const createClientStructure = async (clientName: string) => {
 
 // SALVATAGGIO BACKUP (JSON)
 export const uploadBackup = async (data: any) => {
-  if (!window.gapi.client.drive) throw new Error("Drive API non caricata");
+  if (!window.gapi?.client?.drive) throw new Error("Drive API non caricata");
 
   const fileContent = JSON.stringify(data, null, 2); // Formattato leggibile
   const file = new Blob([fileContent], {type: 'application/json'});
@@ -203,7 +216,7 @@ export const uploadBackup = async (data: any) => {
 };
 
 export const downloadBackup = async () => {
-  if (!window.gapi.client.drive) throw new Error("Drive API non caricata");
+  if (!window.gapi?.client?.drive) throw new Error("Drive API non caricata");
 
   const response = await window.gapi.client.drive.files.list({ q: `name = '${BACKUP_FILENAME}' and trashed = false`, fields: 'files(id, name)' });
   const files = response.result.files;
