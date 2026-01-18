@@ -12,13 +12,15 @@ import { ParametersManager } from './components/ParametersManager';
 import { QuadroLMGenerator } from './components/QuadroLMGenerator';
 import { InpsManager } from './components/InpsManager';
 import { ActivityLogView } from './components/ActivityLogView';
-import { CloudBackup } from './components/CloudBackup'; // Import Cloud Backup
+import { CloudBackup } from './components/CloudBackup';
+import { initGoogleDrive } from './utils/googleDrive';
 import { LogOut, Menu, ArrowLeft, Building2 } from 'lucide-react';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isDriveReady, setIsDriveReady] = useState(false);
   
   // -- STATE MANAGEMENT --
   const [clients, setClients] = useState<Client[]>(() => {
@@ -45,6 +47,13 @@ const App: React.FC = () => {
     const saved = localStorage.getItem('forfettario_logs');
     return saved ? JSON.parse(saved) : [];
   });
+
+  // -- GOOGLE DRIVE INITIALIZATION --
+  useEffect(() => {
+    initGoogleDrive((ready) => {
+      setIsDriveReady(ready);
+    });
+  }, []);
 
   // -- PERSISTENCE --
   useEffect(() => {
@@ -115,15 +124,15 @@ const App: React.FC = () => {
       id: Date.now().toString(),
       name: 'Nuovo Cliente',
       fiscalCode: '',
-      atecoCode: '', // Empty initially, forces selection
-      profitabilityCoefficient: 0, // 0 initially
+      atecoCode: '',
+      profitabilityCoefficient: 0,
       taxRate: TaxRate.STARTUP,
       status: 'active'
     };
     setClients(prev => [...prev, newClient]);
     addLog('CREATE', 'CLIENT', 'Creato nuovo cliente', newClient.id);
     handleSelectClient(newClient.id);
-    setActiveTab('settings'); // Jump to settings to configure
+    setActiveTab('settings');
   };
 
   const handleDeleteClient = (clientId: string) => {
@@ -131,16 +140,10 @@ const App: React.FC = () => {
     if (!clientToRemove) return;
 
     if (window.confirm(`Sei sicuro di voler eliminare definitivamente il cliente "${clientToRemove.name}"?\n\nVerranno eliminate anche tutte le fatture e i versamenti associati.`)) {
-       // Remove client
        setClients(prev => prev.filter(c => c.id !== clientId));
-       // Remove associated invoices
        setInvoices(prev => prev.filter(inv => inv.clientId !== clientId));
-       // Remove associated payments
        setInpsPayments(prev => prev.filter(p => p.clientId !== clientId));
-       
        addLog('DELETE', 'CLIENT', `Eliminato cliente ${clientToRemove.name}`, clientId);
-       
-       // If deleting the currently selected client, go back to dashboard
        if (selectedClientId === clientId) {
          setSelectedClientId(null);
          setActiveTab('studio-dashboard');
@@ -148,14 +151,11 @@ const App: React.FC = () => {
     }
   };
 
-  // -- DERIVED STATE --
   const activeClient = clients.find(c => c.id === selectedClientId);
   const clientInvoices = invoices.filter(i => i.clientId === selectedClientId);
   
-  // -- RENDER CONTENT --
   const renderContent = () => {
     if (!selectedClientId) {
-      // STUDIO VIEW
       switch (activeTab) {
         case 'studio-dashboard':
           return (
@@ -181,7 +181,8 @@ const App: React.FC = () => {
           return (
             <CloudBackup 
               appState={{ clients, invoices, inpsPayments, globalConfig, logs }} 
-              onRestore={handleRestoreFromCloud} 
+              onRestore={handleRestoreFromCloud}
+              isDriveReady={isDriveReady}
             />
           );
         default:
@@ -200,7 +201,6 @@ const App: React.FC = () => {
 
     if (!activeClient) return <div>Cliente non trovato</div>;
 
-    // CLIENT VIEW
     switch (activeTab) {
       case 'dashboard':
         return <Dashboard invoices={clientInvoices} client={activeClient} annualRevenueLimit={globalConfig.annualRevenueLimit} />;
@@ -210,7 +210,7 @@ const App: React.FC = () => {
             client={activeClient} 
             allInvoices={invoices} 
             setAllInvoices={setInvoices} 
-            onLog={addLog} // Pass logger
+            onLog={addLog}
           />
         );
       case 'inps':
@@ -219,7 +219,7 @@ const App: React.FC = () => {
             clientId={activeClient.id} 
             payments={inpsPayments} 
             setPayments={setInpsPayments}
-            onLog={addLog} // Pass logger
+            onLog={addLog}
           />
         );
       case 'taxes':
@@ -233,7 +233,8 @@ const App: React.FC = () => {
           <Settings 
             client={activeClient} 
             onUpdateClient={handleUpdateClient} 
-            onLog={addLog} // Pass logger
+            onLog={addLog}
+            isDriveReady={isDriveReady}
           />
         );
       default:
@@ -243,21 +244,18 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row">
-      {/* Mobile Header */}
       <div className="md:hidden bg-white border-b p-4 flex justify-between items-center sticky top-0 z-20">
-        <h1 className="font-bold text-xl text-indigo-700">Studio Pro</h1>
+        <h1 className="font-bold text-xl text-indigo-700">Studio Palmas</h1>
         <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="p-2 rounded-md hover:bg-gray-100">
           <Menu className="w-6 h-6 text-gray-600" />
         </button>
       </div>
 
-      {/* Sidebar */}
       <aside className={`
         fixed inset-y-0 left-0 z-10 w-64 bg-white border-r border-gray-200 transform transition-transform duration-200 ease-in-out md:translate-x-0 md:static
         ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
         <div className="h-full flex flex-col">
-          {/* Logo Area */}
           <div className="h-16 flex items-center px-6 border-b border-gray-200">
             {selectedClientId ? (
                <button onClick={handleBackToStudio} className="flex items-center text-gray-500 hover:text-indigo-600 transition-colors">
@@ -267,12 +265,11 @@ const App: React.FC = () => {
             ) : (
                <div className="flex items-center">
                  <Building2 className="w-6 h-6 text-indigo-600 mr-2" />
-                 <span className="text-xl font-bold text-gray-900">Studio Pro</span>
+                 <span className="text-xl font-bold text-gray-900">Studio Palmas</span>
                </div>
             )}
           </div>
 
-          {/* Context Header (Active Client) */}
           {selectedClientId && activeClient && (
             <div className="px-4 py-4 bg-indigo-50 border-b border-indigo-100">
               <p className="text-xs font-semibold text-indigo-500 uppercase tracking-wider mb-1">Cliente Selezionato</p>
@@ -286,10 +283,8 @@ const App: React.FC = () => {
             </div>
           )}
 
-          {/* Menu Items */}
           <div className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
             {!selectedClientId ? (
-               // STUDIO MENU
                STUDIO_MENU_ITEMS.map((item) => {
                  const Icon = item.icon;
                  const isActive = activeTab === item.id;
@@ -309,7 +304,6 @@ const App: React.FC = () => {
                  );
                })
             ) : (
-              // CLIENT MENU
               CLIENT_MENU_ITEMS.map((item) => {
                 const Icon = item.icon;
                 const isActive = activeTab === item.id;
@@ -331,7 +325,6 @@ const App: React.FC = () => {
             )}
           </div>
 
-          {/* Footer */}
           <div className="p-4 border-t border-gray-200">
             <button className="w-full flex items-center px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors">
               <LogOut className="w-5 h-5 mr-3" />
@@ -341,9 +334,8 @@ const App: React.FC = () => {
         </div>
       </aside>
 
-      {/* Main Content Area */}
-      <main className="flex-1 overflow-y-auto print:overflow-visible">
-        <header className="bg-white shadow-sm sticky top-0 z-10 px-8 py-4 hidden md:block print:hidden">
+      <main className="flex-1 overflow-y-auto">
+        <header className="bg-white shadow-sm sticky top-0 z-10 px-8 py-4 hidden md:block">
            <h2 className="text-2xl font-bold text-gray-800">
              {!selectedClientId 
                ? STUDIO_MENU_ITEMS.find(i => i.id === activeTab)?.label 
@@ -352,15 +344,14 @@ const App: React.FC = () => {
            </h2>
         </header>
 
-        <div className="p-4 md:p-8 max-w-7xl mx-auto print:p-0 print:max-w-none">
+        <div className="p-4 md:p-8 max-w-7xl mx-auto">
           {renderContent()}
         </div>
       </main>
 
-      {/* Mobile Overlay */}
       {mobileMenuOpen && (
         <div 
-          className="fixed inset-0 bg-gray-800 bg-opacity-50 z-0 md:hidden print:hidden"
+          className="fixed inset-0 bg-gray-800 bg-opacity-50 z-0 md:hidden"
           onClick={() => setMobileMenuOpen(false)}
         ></div>
       )}
