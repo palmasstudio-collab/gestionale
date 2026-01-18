@@ -1,30 +1,27 @@
-# 1. Fase di Build: usa Node.js per scaricare le librerie e compilare il codice
-FROM node:20 AS build
+# --- FASE 1: Costruzione (Builder) ---
+FROM node:20 AS builder
 WORKDIR /app
 
-# Copia i file delle dipendenze per installare i pacchetti necessari
+# Copia i file di configurazione
 COPY package*.json ./
 RUN npm install
 
-# Copia tutto il resto del codice sorgente (compresa la cartella components)
+# Copia tutto il codice (incluse le cartelle components e utils)
 COPY . .
 
-# Esegue la compilazione del progetto (genera la cartella /dist)
+# Compila il progetto
 RUN npm run build
 
-# 2. Fase di Esecuzione: usa un server leggero per servire l'app sul web
-FROM node:20 AS build
+# --- FASE 2: Esecuzione (Server) ---
+FROM node:20-slim
 RUN npm install -g serve
 WORKDIR /app
 
-# Copia i file compilati dalla fase precedente
-# Nota: Vite solitamente crea una cartella chiamata 'dist'
-COPY --from=build /app/dist ./dist
+# Prendi i file pronti dalla fase "builder"
+COPY --from=builder /app/dist ./dist
 
-# Cloud Run richiede l'ascolto sulla porta 8080
+# Apri la porta per Google
 EXPOSE 8080
 
-# Avvia il server statico
+# Avvia
 CMD ["serve", "-s", "dist", "-l", "8080"]
-
-
