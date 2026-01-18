@@ -1,9 +1,9 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { Card } from './Card';
 import { Button } from './Button';
-import { Cloud, UploadCloud, DownloadCloud, CheckCircle, AlertTriangle, Loader2, Lock, Save, FolderOpen, HardDrive, FileJson } from 'lucide-react';
-import { initGoogleDrive, handleAuthClick, uploadBackup, downloadBackup } from '../utils/googleDrive';
+import { Cloud, UploadCloud, DownloadCloud, CheckCircle, Loader2, Lock, Save, FolderOpen, HardDrive } from 'lucide-react';
+import { handleAuthClick, uploadBackup, downloadBackup } from '../utils/googleDrive';
 
 interface CloudBackupProps {
   appState: {
@@ -14,22 +14,15 @@ interface CloudBackupProps {
     logs: any;
   };
   onRestore: (data: any) => void;
+  isDriveReady: boolean;
 }
 
-export const CloudBackup: React.FC<CloudBackupProps> = ({ appState, onRestore }) => {
-  const [isApiLoaded, setIsApiLoaded] = useState(false);
+export const CloudBackup: React.FC<CloudBackupProps> = ({ appState, onRestore, isDriveReady }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [googleStatusMsg, setGoogleStatusMsg] = useState('');
   
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
-  useEffect(() => {
-    // Inizializzazione automatica delle API Google (Configurata internamente in utils/googleDrive.ts)
-    initGoogleDrive((avail) => {
-      setIsApiLoaded(avail);
-    });
-  }, []);
 
   const handleLocalDownload = () => {
     try {
@@ -45,13 +38,13 @@ export const CloudBackup: React.FC<CloudBackupProps> = ({ appState, onRestore })
       
       const link = document.createElement('a');
       link.href = url;
-      link.download = `backup_forfettario_${new Date().toISOString().slice(0, 10)}.json`;
+      link.download = `backup_palmas_${new Date().toISOString().slice(0, 10)}.json`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
       
-      alert("Backup scaricato correttamente nella tua cartella Download!");
+      alert("Backup scaricato correttamente!");
     } catch (e) {
       console.error(e);
       alert("Errore durante la creazione del file.");
@@ -168,7 +161,7 @@ export const CloudBackup: React.FC<CloudBackupProps> = ({ appState, onRestore })
              <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
                <Cloud className="w-5 h-5 text-green-600" /> Google Cloud Sincro
              </h3>
-             <p className="text-sm text-gray-500 mt-1">Sincronizzazione automatica con l'account Studio.</p>
+             <p className="text-sm text-gray-500 mt-1">Sincronizzazione account Studio Palmas.</p>
              {isAuthenticated && (
                 <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 mt-2">
                   <CheckCircle className="w-3 h-3 mr-1" /> Connesso
@@ -177,8 +170,11 @@ export const CloudBackup: React.FC<CloudBackupProps> = ({ appState, onRestore })
            </div>
 
            <div className="flex-1 space-y-4">
-             {!isApiLoaded ? (
-                <div className="text-center text-sm text-gray-400 py-4"><Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" /> Caricamento moduli Google...</div>
+             {!isDriveReady ? (
+                <div className="text-center text-sm text-gray-400 py-4">
+                  <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" /> 
+                  Connessione ai servizi Google...
+                </div>
              ) : !isAuthenticated ? (
                 <Button onClick={handleLogin} variant="secondary" className="w-full">
                   <Lock className="w-4 h-4 mr-2" /> Effettua Login Studio
