@@ -26,9 +26,9 @@ export const CloudBackup: React.FC<CloudBackupProps> = ({ appState, onRestore })
   // LOCAL STATE
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // CONFIGURAZIONE GOOGLE DRIVE
+  // CONFIGURAZIONE GOOGLE DRIVE - AGGIORNATA CON NUOVO CLIENT ID
   const [apiConfig, setApiConfig] = useState({
-    clientId: '300345022748-i89q3vp1gs783vg4ddm7uqaunhfd7r05.apps.googleusercontent.com',
+    clientId: '459844148501-9fc3ns8fpd7dl7pcgmiodbnh53vd3hol.apps.googleusercontent.com',
     apiKey: 'AIzaSyA6uuUAnAv6SkL1ZXmfoxFWyAwHynhDEb4'
   });
 
@@ -112,7 +112,7 @@ export const CloudBackup: React.FC<CloudBackupProps> = ({ appState, onRestore })
       if (err.error === 'popup_closed_by_user') {
         setGoogleStatusMsg("Login annullato.");
       } else {
-        setGoogleStatusMsg("Errore login. Google richiede un dominio pubblico, non funziona in anteprima locale.");
+        setGoogleStatusMsg("Errore login. Verifica le impostazioni OAuth nella Google Cloud Console.");
       }
     }
   };
@@ -251,7 +251,7 @@ export const CloudBackup: React.FC<CloudBackupProps> = ({ appState, onRestore })
                   </Button>
                   <div className="text-xs text-amber-600 bg-amber-50 p-2 rounded border border-amber-100">
                     <AlertTriangle className="w-3 h-3 inline mr-1" />
-                    Potrebbe non funzionare in ambienti di anteprima (es. StackBlitz) a causa delle policy di sicurezza Google.
+                    Se riscontri errori di autorizzazione, assicurati che il Client ID sia configurato correttamente nella Google Cloud Console.
                   </div>
                 </div>
              ) : (
