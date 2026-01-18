@@ -17,28 +17,19 @@ interface CloudBackupProps {
 }
 
 export const CloudBackup: React.FC<CloudBackupProps> = ({ appState, onRestore }) => {
-  // GOOGLE STATE
   const [isApiLoaded, setIsApiLoaded] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [googleStatusMsg, setGoogleStatusMsg] = useState('');
   
-  // LOCAL STATE
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // CONFIGURAZIONE GOOGLE DRIVE - AGGIORNATA CON IL TUO NUOVO CLIENT ID
-  const [apiConfig, setApiConfig] = useState({
-    clientId: '459844148501-9fc3ns8fpd7dl7pcgmiodbnh53vd3hol.apps.googleusercontent.com',
-    apiKey: 'AIzaSyA6uuUAnAv6SkL1ZXmfoxFWyAwHynhDEb4'
-  });
-
   useEffect(() => {
-    if (apiConfig.clientId && apiConfig.apiKey) {
-      initGoogleDrive(apiConfig.apiKey, apiConfig.clientId, (avail) => {
-        setIsApiLoaded(avail);
-      });
-    }
-  }, [apiConfig]);
+    // Inizializzazione automatica delle API Google (Configurata internamente in utils/googleDrive.ts)
+    initGoogleDrive((avail) => {
+      setIsApiLoaded(avail);
+    });
+  }, []);
 
   const handleLocalDownload = () => {
     try {
@@ -63,7 +54,7 @@ export const CloudBackup: React.FC<CloudBackupProps> = ({ appState, onRestore })
       alert("Backup scaricato correttamente nella tua cartella Download!");
     } catch (e) {
       console.error(e);
-      alert("Errore durante la creazione del file di backup.");
+      alert("Errore durante la creazione del file.");
     }
   };
 
@@ -71,7 +62,7 @@ export const CloudBackup: React.FC<CloudBackupProps> = ({ appState, onRestore })
     const file = e.target.files?.[0];
     if (!file) return;
 
-    if (!window.confirm("Attenzione: Caricando questo file SOVRASCRIVERAI tutti i dati attuali. Vuoi procedere?")) {
+    if (!window.confirm("Attenzione: Sovrascriverai TUTTI i dati attuali dello studio. Procedere?")) {
       if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
@@ -81,15 +72,13 @@ export const CloudBackup: React.FC<CloudBackupProps> = ({ appState, onRestore })
       try {
         const content = event.target?.result as string;
         const parsed = JSON.parse(content);
-        
         if (parsed && parsed.data) {
           onRestore(parsed.data);
         } else {
-          alert("Il file selezionato non è un backup valido.");
+          alert("Backup non valido.");
         }
       } catch (err) {
-        console.error(err);
-        alert("Errore nella lettura del file.");
+        alert("Errore caricamento file.");
       }
     };
     reader.readAsText(file);
@@ -100,21 +89,17 @@ export const CloudBackup: React.FC<CloudBackupProps> = ({ appState, onRestore })
     try {
       await handleAuthClick();
       setIsAuthenticated(true);
-      setGoogleStatusMsg("Connesso a Google Drive");
+      setGoogleStatusMsg("Connesso a Google Drive - Studio Palmas");
     } catch (err: any) {
       console.error(err);
-      if (err.error === 'popup_closed_by_user') {
-        setGoogleStatusMsg("Login annullato dal popup.");
-      } else {
-        setGoogleStatusMsg("Errore login. Verifica le impostazioni OAuth.");
-      }
+      setGoogleStatusMsg("Errore autorizzazione. Verifica popup browser.");
     }
   };
 
   const handleDriveBackup = async () => {
     if (!isAuthenticated) return;
     setIsGoogleLoading(true);
-    setGoogleStatusMsg("Caricamento...");
+    setGoogleStatusMsg("Salvataggio in corso...");
     try {
       const backupData = {
         timestamp: new Date().toISOString(),
@@ -122,10 +107,9 @@ export const CloudBackup: React.FC<CloudBackupProps> = ({ appState, onRestore })
         data: appState
       };
       await uploadBackup(backupData);
-      setGoogleStatusMsg(`Backup Drive completato!`);
+      setGoogleStatusMsg(`Backup Cloud completato!`);
     } catch (err: any) {
-      console.error(err);
-      setGoogleStatusMsg("Errore backup: " + (err.message || 'Errore Drive'));
+      setGoogleStatusMsg("Errore salvataggio Cloud.");
     } finally {
       setIsGoogleLoading(false);
     }
@@ -133,22 +117,19 @@ export const CloudBackup: React.FC<CloudBackupProps> = ({ appState, onRestore })
 
   const handleDriveRestore = async () => {
     if (!isAuthenticated) return;
-    if (!window.confirm("Attenzione: Sovrascriverai i dati locali con quelli di Drive. Procedere?")) return;
+    if (!window.confirm("Attenzione: Ripristinando da Drive perderai le modifiche locali non salvate. Procedere?")) return;
     
     setIsGoogleLoading(true);
-    setGoogleStatusMsg("Scaricamento...");
+    setGoogleStatusMsg("Sincronizzazione...");
     try {
       const jsonStr = await downloadBackup();
       const parsed = JSON.parse(jsonStr);
       if (parsed && parsed.data) {
         onRestore(parsed.data);
-        setGoogleStatusMsg(`Ripristino Drive OK!`);
-      } else {
-        throw new Error("Formato non valido");
+        setGoogleStatusMsg(`Sincronizzazione Drive OK!`);
       }
     } catch (err: any) {
-      console.error(err);
-      setGoogleStatusMsg("Errore ripristino.");
+      setGoogleStatusMsg("Errore ripristino dal Cloud.");
     } finally {
       setIsGoogleLoading(false);
     }
@@ -157,29 +138,26 @@ export const CloudBackup: React.FC<CloudBackupProps> = ({ appState, onRestore })
   return (
     <div className="max-w-4xl mx-auto space-y-8">
       <div>
-        <h2 className="text-2xl font-bold text-gray-900">Backup & Ripristino</h2>
-        <p className="text-gray-500">Gestisci i dati dello Studio Palmas in locale o nel Cloud.</p>
+        <h2 className="text-2xl font-bold text-gray-900">Backup & Sincronizzazione</h2>
+        <p className="text-gray-500">Gestisci la sicurezza dei dati dello Studio Palmas.</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card className="border-t-4 border-t-indigo-600 h-full flex flex-col">
-           <div className="mb-6 flex items-start justify-between">
-             <div>
+           <div className="mb-6">
                <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-                 <HardDrive className="w-5 h-5 text-indigo-600" />
-                 Backup su File
+                 <HardDrive className="w-5 h-5 text-indigo-600" /> Backup su File
                </h3>
-               <p className="text-sm text-gray-500 mt-1">Salva un file .json sul tuo computer.</p>
-             </div>
+               <p className="text-sm text-gray-500 mt-1">Salva un file .json fisico per sicurezza offline.</p>
            </div>
-           <div className="flex-1 flex flex-col justify-center space-y-4">
+           <div className="flex-1 space-y-4">
              <Button onClick={handleLocalDownload} size="lg" className="w-full justify-start">
-               <Save className="w-5 h-5 mr-3" /> Scarica Backup
+               <Save className="w-5 h-5 mr-3" /> Scarica Backup Locale
              </Button>
              <div className="relative">
                <input type="file" accept=".json" ref={fileInputRef} onChange={handleLocalUpload} className="hidden" />
                <Button onClick={() => fileInputRef.current?.click()} variant="secondary" size="lg" className="w-full justify-start">
-                 <FolderOpen className="w-5 h-5 mr-3" /> Carica Backup
+                 <FolderOpen className="w-5 h-5 mr-3" /> Carica Backup Locale
                </Button>
              </div>
            </div>
@@ -188,9 +166,9 @@ export const CloudBackup: React.FC<CloudBackupProps> = ({ appState, onRestore })
         <Card className="border-t-4 border-t-green-600 h-full flex flex-col">
            <div className="mb-6">
              <h3 className="text-lg font-bold text-gray-900 flex items-center gap-2">
-               <Cloud className="w-5 h-5 text-green-600" /> Google Drive
+               <Cloud className="w-5 h-5 text-green-600" /> Google Cloud Sincro
              </h3>
-             <p className="text-sm text-gray-500 mt-1">Sincronizzazione account Studio Palmas.</p>
+             <p className="text-sm text-gray-500 mt-1">Sincronizzazione automatica con l'account Studio.</p>
              {isAuthenticated && (
                 <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800 mt-2">
                   <CheckCircle className="w-3 h-3 mr-1" /> Connesso
@@ -198,25 +176,25 @@ export const CloudBackup: React.FC<CloudBackupProps> = ({ appState, onRestore })
              )}
            </div>
 
-           <div className="flex-1 flex flex-col justify-center space-y-4">
+           <div className="flex-1 space-y-4">
              {!isApiLoaded ? (
-                <div className="text-center text-sm text-gray-400 py-4"><Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" /> Caricamento...</div>
+                <div className="text-center text-sm text-gray-400 py-4"><Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" /> Caricamento moduli Google...</div>
              ) : !isAuthenticated ? (
                 <Button onClick={handleLogin} variant="secondary" className="w-full">
-                  <Lock className="w-4 h-4 mr-2" /> Connetti Google Drive
+                  <Lock className="w-4 h-4 mr-2" /> Effettua Login Studio
                 </Button>
              ) : (
                <>
                  <Button onClick={handleDriveBackup} disabled={isGoogleLoading} className="w-full justify-start bg-green-600 hover:bg-green-700 text-white">
-                   {isGoogleLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin"/> : <UploadCloud className="w-4 h-4 mr-2" />} Salva su Drive
+                   {isGoogleLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin"/> : <UploadCloud className="w-4 h-4 mr-2" />} Salva su Cloud
                  </Button>
                  <Button onClick={handleDriveRestore} disabled={isGoogleLoading} variant="secondary" className="w-full justify-start">
-                   {isGoogleLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin"/> : <DownloadCloud className="w-4 h-4 mr-2" />} Ripristina da Drive
+                   {isGoogleLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin"/> : <DownloadCloud className="w-4 h-4 mr-2" />} Sincronizza da Cloud
                  </Button>
                </>
              )}
              {googleStatusMsg && (
-               <div className={`text-xs text-center font-medium p-2 rounded ${googleStatusMsg.includes('Errore') ? 'text-red-600 bg-red-50' : 'text-green-600 bg-green-50'}`}>
+               <div className={`text-xs text-center font-medium p-2 rounded mt-2 ${googleStatusMsg.includes('Errore') ? 'text-red-600 bg-red-50' : 'text-green-600 bg-green-50'}`}>
                  {googleStatusMsg}
                </div>
              )}
