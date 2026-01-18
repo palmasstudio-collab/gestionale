@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { GoogleGenAI } from "@google/genai";
 import { Client, Invoice } from '../types';
@@ -23,14 +24,12 @@ export const AiAdvisor: React.FC<AiAdvisorProps> = ({ client, invoices }) => {
   const [loading, setLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to bottom
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
 
-  // Reset chat when client changes
   useEffect(() => {
      setMessages([{ role: 'model', text: `Ciao! Sto analizzando la posizione fiscale di ${client.name}. Come posso aiutarti oggi?` }]);
   }, [client.id]);
@@ -46,7 +45,6 @@ export const AiAdvisor: React.FC<AiAdvisorProps> = ({ client, invoices }) => {
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
       
-      // Prepare context about the user's financial situation
       const contextData = JSON.stringify({
         clientProfile: client,
         financialSummary: {
@@ -58,26 +56,27 @@ export const AiAdvisor: React.FC<AiAdvisorProps> = ({ client, invoices }) => {
       });
 
       const systemInstruction = `
-        You are an expert Italian Accountant (Commercialista) using a professional dashboard.
-        You are assisting a colleague in analyzing the data of a specific client (${client.name}).
+        Sei un esperto Commercialista Italiano che utilizza un dashboard professionale dello Studio Palmas.
+        Stai assistendo un collega nell'analisi dei dati di un cliente specifico (${client.name}).
         
-        Client Context JSON: ${contextData}
+        Contesto Cliente: ${contextData}
         
-        Rules:
-        1. Only answer questions related to Italian tax law, accounting, or the specific client's data.
-        2. Remind the user that you are an AI.
-        3. Explain calculations simply but professionally.
-        4. Focus on "Regime Forfettario".
-        5. Speak Italian.
+        Regole:
+        1. Rispondi solo a domande relative alla normativa fiscale italiana, contabilità o dati specifici del cliente.
+        2. Ricorda all'utente che sei un'intelligenza artificiale.
+        3. Spiega i calcoli in modo semplice ma professionale.
+        4. Focus principale: Regime Forfettario (L. 190/2014).
+        5. Parla esclusivamente in Italiano.
       `;
 
       const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash-latest',
+        model: 'gemini-3-pro-preview',
         contents: [
           { role: 'user', parts: [{ text: userMsg }] }
         ],
         config: {
           systemInstruction: systemInstruction,
+          thinkingConfig: { thinkingBudget: 4000 } // Abilitiamo il ragionamento profondo per consulenza complessa
         }
       });
 
@@ -98,8 +97,8 @@ export const AiAdvisor: React.FC<AiAdvisorProps> = ({ client, invoices }) => {
         <div className="flex items-center gap-3">
           <Bot className="w-8 h-8 text-indigo-300" />
           <div>
-            <h2 className="text-xl font-bold">AI Commercialista</h2>
-            <p className="text-indigo-200 text-sm">Analisi per: {client.name}</p>
+            <h2 className="text-xl font-bold">AI Commercialista Pro</h2>
+            <p className="text-indigo-200 text-sm">Analisi Avanzata per: {client.name}</p>
           </div>
         </div>
       </div>
@@ -122,7 +121,7 @@ export const AiAdvisor: React.FC<AiAdvisorProps> = ({ client, invoices }) => {
             <div className="flex justify-start">
               <div className="bg-gray-100 rounded-lg p-3 flex items-center gap-2">
                 <Loader2 className="w-4 h-4 animate-spin text-gray-500" />
-                <span className="text-xs text-gray-500">Sto analizzando la normativa...</span>
+                <span className="text-xs text-gray-500">Sto analizzando la normativa fiscale...</span>
               </div>
             </div>
           )}
