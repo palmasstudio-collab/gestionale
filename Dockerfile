@@ -13,7 +13,7 @@ COPY . .
 RUN npm run build
 
 # 2. Fase di Esecuzione: usa un server leggero per servire l'app sul web
-FROM node:18-slim
+FROM node:20 AS build
 RUN npm install -g serve
 WORKDIR /app
 
@@ -26,4 +26,5 @@ EXPOSE 8080
 
 # Avvia il server statico
 CMD ["serve", "-s", "dist", "-l", "8080"]
+
 
