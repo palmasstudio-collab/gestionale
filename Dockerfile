@@ -1,27 +1,28 @@
-# 1. Usa Node.js per installare le librerie e compilare il software
+# 1. Fase di Build: usa Node.js per scaricare le librerie e compilare il codice
 FROM node:18 AS build
 WORKDIR /app
 
-# Copia i file che elencano le librerie necessarie
+# Copia i file delle dipendenze per installare i pacchetti necessari
 COPY package*.json ./
 RUN npm install
 
-# Copia tutto il resto del codice (cartella components, src, ecc.)
+# Copia tutto il resto del codice sorgente (compresa la cartella components)
 COPY . .
 
-# Crea la versione finale del sito (compilazione)
+# Esegue la compilazione del progetto (genera la cartella /dist)
 RUN npm run build
 
-# 2. Prepara un server leggero per mostrare il sito sul web
+# 2. Fase di Esecuzione: usa un server leggero per servire l'app sul web
 FROM node:18-slim
 RUN npm install -g serve
 WORKDIR /app
 
-# Prendi i file pronti dalla fase di build (solitamente nella cartella dist)
+# Copia i file compilati dalla fase precedente
+# Nota: Vite solitamente crea una cartella chiamata 'dist'
 COPY --from=build /app/dist ./dist
 
-# Diciamo a Google di usare la porta 8080
+# Cloud Run richiede l'ascolto sulla porta 8080
 EXPOSE 8080
 
-# Comando per avviare il server
+# Avvia il server statico
 CMD ["serve", "-s", "dist", "-l", "8080"]
