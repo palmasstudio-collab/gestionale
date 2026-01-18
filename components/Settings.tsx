@@ -4,7 +4,8 @@ import { Client, TaxRate, LogActionType, LogEntityType } from '../types';
 import { ATECO_ACTIVITIES } from '../constants';
 import { Card } from './Card';
 import { Button } from './Button';
-import { CheckCircle, AlertCircle, Briefcase, Save } from 'lucide-react';
+import { CheckCircle, AlertCircle, Briefcase, Save, Loader2 } from 'lucide-react';
+import { createClientStructure } from '../utils/googleDrive';
 
 interface SettingsProps {
   client: Client;
@@ -15,6 +16,7 @@ interface SettingsProps {
 export const Settings: React.FC<SettingsProps> = ({ client, onUpdateClient, onLog }) => {
   const [formData, setFormData] = useState<Client>(client);
   const [hasChanges, setHasChanges] = useState(false);
+  const [isCreatingFolders, setIsCreatingFolders] = useState(false);
 
   // Sync state if the selected client changes from the parent navigation
   useEffect(() => {
@@ -32,7 +34,6 @@ export const Settings: React.FC<SettingsProps> = ({ client, onUpdateClient, onLo
         activityId: activity.id,
         atecoCode: activity.code,
         profitabilityCoefficient: activity.coefficient,
-        // Optional: append VAT regime to notes if not already there, but keeping it clean for now
       }));
       setHasChanges(true);
     }
@@ -47,12 +48,39 @@ export const Settings: React.FC<SettingsProps> = ({ client, onUpdateClient, onLo
     setHasChanges(true);
   };
 
-  const handleSave = (e: React.FormEvent) => {
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // 1. Salvataggio locale
     onUpdateClient(formData);
     onLog('UPDATE', 'SETTINGS', `Aggiornata anagrafica/impostazioni`, client.id);
     setHasChanges(false);
-    alert('Anagrafica salvata correttamente!');
+
+    // 2. Logica Google Drive Automatica
+    // Verifichiamo se l'utente è autenticato su Drive controllando il token globale di gapi
+    const isDriveAuth = typeof window !== 'undefined' && 
+                        (window as any).gapi?.client?.getToken() !== null;
+    
+    if (isDriveAuth) {
+      const confirmDrive = window.confirm(
+        `Dati salvati localmente. Vuoi creare/aggiornare anche la struttura cartelle su Google Drive per "${formData.name}"?`
+      );
+
+      if (confirmDrive) {
+        setIsCreatingFolders(true);
+        try {
+          await createClientStructure(formData.name);
+          alert('Struttura cartelle creata con successo su Google Drive!');
+        } catch (err) {
+          console.error(err);
+          alert('Errore nella creazione delle cartelle su Drive. Verifica la connessione e i permessi.');
+        } finally {
+          setIsCreatingFolders(false);
+        }
+      }
+    } else {
+      alert('Anagrafica salvata correttamente localmente. (Nota: Google Drive non connesso)');
+    }
   };
 
   const selectedActivity = ATECO_ACTIVITIES.find(a => a.id === formData.activityId);
@@ -60,14 +88,26 @@ export const Settings: React.FC<SettingsProps> = ({ client, onUpdateClient, onLo
   return (
     <div className="max-w-3xl mx-auto space-y-6">
       <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-gray-900">Anagrafica & Configurazione</h2>
+        <div className="flex flex-col">
+          <h2 className="text-2xl font-bold text-gray-900">Anagrafica & Configurazione</h2>
+          {isCreatingFolders && (
+            <div className="flex items-center text-xs text-indigo-600 animate-pulse mt-1">
+              <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+              Sincronizzazione Drive in corso...
+            </div>
+          )}
+        </div>
         <Button 
           onClick={handleSave} 
-          disabled={!hasChanges}
+          disabled={!hasChanges || isCreatingFolders}
           className={hasChanges ? "ring-2 ring-indigo-500 ring-offset-2" : ""}
         >
-          <Save className="w-4 h-4 mr-2" />
-          Salva Modifiche
+          {isCreatingFolders ? (
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+          ) : (
+            <Save className="w-4 h-4 mr-2" />
+          )}
+          {isCreatingFolders ? 'Creazione...' : 'Salva Modifiche'}
         </Button>
       </div>
       
