@@ -1,5 +1,5 @@
 # 1. Fase di Build: usa Node.js per scaricare le librerie e compilare il codice
-FROM node:18 AS build
+FROM node:20 AS build
 WORKDIR /app
 
 # Copia i file delle dipendenze per installare i pacchetti necessari
@@ -26,3 +26,4 @@ EXPOSE 8080
 
 # Avvia il server statico
 CMD ["serve", "-s", "dist", "-l", "8080"]
+
