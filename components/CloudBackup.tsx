@@ -3,7 +3,7 @@ import React, { useState, useRef } from 'react';
 import { Card } from './Card';
 import { Button } from './Button';
 import { Cloud, UploadCloud, DownloadCloud, CheckCircle, Loader2, Lock, Save, FolderOpen, HardDrive } from 'lucide-react';
-import { handleAuthClick, uploadBackup, downloadBackup } from '../utils/googleDrive';
+import { uploadBackup, downloadBackup } from '../utils/googleDrive';
 
 interface CloudBackupProps {
   appState: {
@@ -15,13 +15,13 @@ interface CloudBackupProps {
   };
   onRestore: (data: any) => void;
   isDriveReady: boolean;
+  isAuthenticated: boolean;
+  onLogin: () => Promise<void>;
 }
 
-export const CloudBackup: React.FC<CloudBackupProps> = ({ appState, onRestore, isDriveReady }) => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+export const CloudBackup: React.FC<CloudBackupProps> = ({ appState, onRestore, isDriveReady, isAuthenticated, onLogin }) => {
   const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [googleStatusMsg, setGoogleStatusMsg] = useState('');
-  
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleLocalDownload = () => {
@@ -76,17 +76,6 @@ export const CloudBackup: React.FC<CloudBackupProps> = ({ appState, onRestore, i
     };
     reader.readAsText(file);
     if (fileInputRef.current) fileInputRef.current.value = '';
-  };
-
-  const handleLogin = async () => {
-    try {
-      await handleAuthClick();
-      setIsAuthenticated(true);
-      setGoogleStatusMsg("Connesso a Google Drive - Studio Palmas");
-    } catch (err: any) {
-      console.error(err);
-      setGoogleStatusMsg("Errore autorizzazione. Verifica popup browser.");
-    }
   };
 
   const handleDriveBackup = async () => {
@@ -176,7 +165,7 @@ export const CloudBackup: React.FC<CloudBackupProps> = ({ appState, onRestore, i
                   Connessione ai servizi Google...
                 </div>
              ) : !isAuthenticated ? (
-                <Button onClick={handleLogin} variant="secondary" className="w-full">
+                <Button onClick={onLogin} variant="secondary" className="w-full">
                   <Lock className="w-4 h-4 mr-2" /> Effettua Login Studio
                 </Button>
              ) : (
