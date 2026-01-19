@@ -4,7 +4,7 @@ import { Client, TaxRate, LogActionType, LogEntityType } from '../types';
 import { ATECO_ACTIVITIES } from '../constants';
 import { Card } from './Card';
 import { Button } from './Button';
-import { Save, Loader2, Database } from 'lucide-react';
+import { Save, Loader2, Database, CheckCircle, XCircle } from 'lucide-react';
 import { createClientStructure, handleAuthClick } from '../utils/googleDrive';
 
 interface SettingsProps {
@@ -47,9 +47,9 @@ export const Settings: React.FC<SettingsProps> = ({ client, onUpdateClient, onLo
 
     const isDriveAuth = typeof window !== 'undefined' && (window as any).gapi?.client?.getToken() !== null;
     
-    if (confirm(`Dati salvati in locale.\n\nVuoi creare/aggiornare la struttura cartelle e il DATABASE EXCEL su Google Drive per questo cliente?`)) {
+    if (confirm(`Dati salvati in locale.\n\nVuoi creare la struttura cartelle e il DATABASE EXCEL su Google Drive per questo cliente?`)) {
       if (!isDriveReady) {
-        alert("Sincronizzazione Google in corso... Attendi un istante.");
+        alert("Servizi Google in fase di inizializzazione... Riprova tra pochi secondi.");
         return;
       }
 
@@ -61,7 +61,7 @@ export const Settings: React.FC<SettingsProps> = ({ client, onUpdateClient, onLo
         
         const result = await createClientStructure(formData.name);
         
-        // Aggiorniamo il cliente locale con l'ID del foglio creato
+        // Salviamo lo spreadsheetId nel profilo del cliente
         const updatedClient = { ...formData, spreadsheetId: result.spreadsheetId };
         onUpdateClient(updatedClient);
         setFormData(updatedClient);
@@ -69,7 +69,7 @@ export const Settings: React.FC<SettingsProps> = ({ client, onUpdateClient, onLo
         alert('Struttura cartelle e Database Excel creati con successo!');
       } catch (err: any) {
         if (err.error !== 'access_denied') {
-          alert('Errore: ' + (err.message || 'Impossibile completare l\'operazione su Google Drive.'));
+          alert('Errore sincronizzazione Drive: ' + (err.message || 'Verifica la connessione o l\'accesso Google.'));
         }
       } finally {
         setIsCreatingFolders(false);
@@ -106,10 +106,10 @@ export const Settings: React.FC<SettingsProps> = ({ client, onUpdateClient, onLo
       
       <Card title="Dati Anagrafici">
         <form onSubmit={handleSave} className="space-y-4">
-          <input type="text" name="name" value={formData.name} onChange={handleChange} placeholder="Ragione Sociale" className="w-full rounded-md border-gray-300 border p-2" />
-          <input type="text" name="fiscalCode" value={formData.fiscalCode} onChange={handleChange} placeholder="Codice Fiscale / P.IVA" className="w-full rounded-md border-gray-300 border p-2" />
+          <input type="text" name="name" value={formData.name} onChange={handleChange} placeholder="Ragione Sociale" className="w-full rounded-md border-gray-300 border p-2 focus:ring-indigo-500" />
+          <input type="text" name="fiscalCode" value={formData.fiscalCode} onChange={handleChange} placeholder="Codice Fiscale / P.IVA" className="w-full rounded-md border-gray-300 border p-2 focus:ring-indigo-500" />
           
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-gray-500 mb-1">Aliquota Imposta</label>
               <select name="taxRate" value={formData.taxRate} onChange={handleChange} className="w-full rounded-md border-gray-300 border p-2">
@@ -118,10 +118,13 @@ export const Settings: React.FC<SettingsProps> = ({ client, onUpdateClient, onLo
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Database Cloud</label>
-              <div className={`p-2 rounded border flex items-center gap-2 ${formData.spreadsheetId ? 'bg-green-50 border-green-200 text-green-700' : 'bg-gray-50 border-gray-200 text-gray-500'}`}>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Stato Database Cloud (Sheets)</label>
+              <div className={`p-2 rounded border flex items-center gap-2 ${formData.spreadsheetId ? 'bg-green-50 border-green-200 text-green-700' : 'bg-gray-50 border-gray-200 text-gray-400'}`}>
                 <Database className="w-4 h-4" />
-                <span className="text-xs truncate">{formData.spreadsheetId ? 'Sincronizzato' : 'Non creato'}</span>
+                <span className="text-xs font-bold truncate">
+                  {formData.spreadsheetId ? 'Sincronizzato' : 'Nessun DB collegato'}
+                </span>
+                {formData.spreadsheetId ? <CheckCircle className="w-3 h-3 ml-auto text-green-500" /> : <XCircle className="w-3 h-3 ml-auto text-gray-300" />}
               </div>
             </div>
           </div>
