@@ -4,7 +4,7 @@
 const CLIENT_ID = "459844148501-9fc3ns8fpd7dl7pcgmiodbnh53vd3hol.apps.googleusercontent.com"; 
 const MASTER_FOLDER_ID = "1ogkOOPaH3EwYUV-DO-GHgZ0HswocM7E8";
 const DRIVE_DISCOVERY_DOC = 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest';
-const SHEETS_DISCOVERY_DOC = 'https://blocks.googleapis.com/$discovery/rest?version=v4';
+const SHEETS_DISCOVERY_DOC = 'https://sheets.googleapis.com/$discovery/rest?version=v4';
 const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/spreadsheets';
 const BACKUP_FILENAME = 'forfettario_pro_backup.json';
 
@@ -72,7 +72,7 @@ export const handleAuthClick = async () => {
     tokenClient.callback = async (resp: any) => {
       if (resp.error !== undefined) {
         if (resp.error === 'access_denied') {
-          alert("ERRORE: Accesso Negato. Aggiungi la tua email agli UTENTI DI TEST nella Cloud Console.");
+          alert("ERRORE: Accesso Negato. Assicurati che l'email sia tra gli UTENTI DI TEST nella Cloud Console e di aver accettato tutti i permessi (Drive + Sheets).");
         }
         return reject(resp);
       }
@@ -98,25 +98,23 @@ export const createFolder = async (name: string, parentId?: string) => {
   return response.result.id;
 };
 
-// --- NUOVE FUNZIONI SHEETS ---
+// --- FUNZIONI SHEETS (DATABASE EXCEL) ---
 
 export const createDatabaseSpreadsheet = async (clientName: string, parentId: string) => {
   try {
     const title = `Database_Fiscale_${clientName}`;
     
-    // 1. Crea lo spreadsheet
+    // 1. Crea lo spreadsheet (Foglio Google)
     const spreadsheet = await window.gapi.client.sheets.spreadsheets.create({
       resource: {
         properties: { title: title },
-        sheets: [{
-          properties: { title: 'Fatture' }
-        }]
+        sheets: [{ properties: { title: 'Fatture' } }]
       }
     });
 
     const spreadsheetId = spreadsheet.result.spreadsheetId;
 
-    // 2. Sposta il file nella cartella del cliente (Drive API)
+    // 2. Sposta il file nella cartella corretta del cliente
     await window.gapi.client.drive.files.update({
       fileId: spreadsheetId,
       addParents: parentId,
@@ -124,7 +122,7 @@ export const createDatabaseSpreadsheet = async (clientName: string, parentId: st
       fields: 'id, parents'
     });
 
-    // 3. Aggiungi intestazione riga 1
+    // 3. Crea la testata (Intestazioni colonne)
     const headers = [['Data Incasso', 'N. Fattura', 'Cliente Finale', 'Imponibile (€)', 'Cassa/Rivalsa (€)', 'Totale (€)', 'Stato']];
     await window.gapi.client.sheets.spreadsheets.values.update({
       spreadsheetId: spreadsheetId,
@@ -133,7 +131,6 @@ export const createDatabaseSpreadsheet = async (clientName: string, parentId: st
       resource: { values: headers }
     });
 
-    console.log(`Spreadsheet creato con successo: ${title}`);
     return spreadsheetId;
   } catch (err) {
     console.error("Errore creazione Spreadsheet:", err);
@@ -160,21 +157,24 @@ export const syncInvoiceToSpreadsheet = async (spreadsheetId: string, invoice: a
       resource: { values: row }
     });
     
-    console.log("Fattura sincronizzata sul Database Google Sheets.");
+    console.log("Fattura sincronizzata sul database Sheets.");
   } catch (err) {
     console.error("Errore sincronizzazione Sheets:", err);
-    // Non blocchiamo l'app se Sheets fallisce, ma logghiamo
+    throw err;
   }
 };
 
 export const createClientStructure = async (clientName: string) => {
+  // Crea cartella principale del cliente
   const rootFolderId = await createFolder(clientName, MASTER_FOLDER_ID);
+  
+  // Crea sottocartelle standard
   const subfolders = ['01_Fatture_Emesse', '02_Fatture_Acquisto_Spese', '03_F24_Tasse_INPS', '04_Contratti_Preventivi'];
   for (const folderName of subfolders) {
     await createFolder(folderName, rootFolderId);
   }
   
-  // Crea anche il Database Excel (Sheets)
+  // Crea il database Sheets direttamente nella cartella principale del cliente
   const spreadsheetId = await createDatabaseSpreadsheet(clientName, rootFolderId);
   
   return { rootFolderId, spreadsheetId };
