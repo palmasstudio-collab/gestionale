@@ -15,93 +15,79 @@ export interface AtecoActivity {
   id: string;
   code: string;
   description: string;
-  coefficient: number; // e.g., 0.78
-  inpsType: string; // 'Gestione Separata', 'Artigiani', etc.
-  vatRegime: string; // Description of VAT application (e.g. 'Esente art. 10')
+  coefficient: number;
+  inpsType: string;
+  vatRegime: string;
   active: boolean;
-  
-  // -- Dynamic Invoice Configuration --
-  hasCassa: boolean;        // If true, adds a calculated line
-  cassaLabel?: string;      // e.g. "Rivalsa INPS", "Contributo Integrativo ENPAP"
-  cassaRate?: number;       // e.g. 0.04 for 4%
-  cassaIsTaxable: boolean;  // TRUE for Rivalsa INPS (Gestione Separata), FALSE for Private Cassas (ENPAP, Inarcassa)
-  
-  // -- Estimation Configuration --
-  subjectiveContributionRate?: number; // e.g. 0.10 for ENPAP, 0.2607 for GS. Used for TaxSimulator.
+  hasCassa: boolean;
+  cassaLabel?: string;
+  cassaRate?: number;
+  cassaIsTaxable: boolean;
+  subjectiveContributionRate?: number;
 }
 
 export interface Client {
   id: string;
-  name: string; // Ragione Sociale / Nome Cognome
-  fiscalCode: string; // Codice Fiscale / P.IVA
-  
-  // Linked Activity Data
-  activityId?: string; // Reference to AtecoActivity
+  name: string;
+  fiscalCode: string;
+  activityId?: string;
   atecoCode: string;
-  profitabilityCoefficient: number; // e.g., 0.78 for 78%
-  
+  profitabilityCoefficient: number;
   taxRate: TaxRate;
   email?: string;
   notes?: string;
   status: ClientStatus;
+  spreadsheetId?: string; // ID del foglio Google "Database"
 }
 
 export interface GlobalTaxConfig {
-  annualRevenueLimit: number; // e.g., 85000
-  standardInpsRate: number; // e.g., 0.2607
+  annualRevenueLimit: number;
+  standardInpsRate: number;
 }
 
 export interface Invoice {
   id: string;
-  clientId: string; // Foreign key to Client
+  clientId: string;
   number: string;
-  date: string; // ISO date string
-  clientName: string; // The customer of the client
-  
-  // -- Amounts --
-  taxableAmount: number; // Imponibile (The service fee)
-  cassaAmount: number;   // Calculated contribution
-  amount: number;        // Total Amount (Gross amount received)
-  
+  date: string;
+  clientName: string;
+  taxableAmount: number;
+  cassaAmount: number;
+  amount: number;
   status: PaymentStatus;
   paymentDate?: string;
-  
-  // -- Attachments --
-  attachment?: string; // Base64 string
+  attachment?: string;
   fileName?: string;
 }
 
 export interface InpsPayment {
   id: string;
   clientId: string;
-  date: string; // Date of payment (Cash basis)
+  date: string;
   amount: number;
-  description?: string; // e.g., "Saldo 2023", "Acconto 2024"
-  
-  // -- Attachments --
-  attachment?: string; // Base64 string
+  description?: string;
+  attachment?: string;
   fileName?: string;
 }
 
 export interface TaxCalculationResult {
   totalRevenue: number;
-  taxableIncome: number; // Revenue * Coefficient
+  taxableIncome: number;
   grossTax: number;
   netIncome: number;
   remainingLimit: number;
   estimatedInps: number;
 }
 
-// -- LOGGING SYSTEM --
 export type LogActionType = 'CREATE' | 'UPDATE' | 'DELETE' | 'STATUS_CHANGE';
 export type LogEntityType = 'INVOICE' | 'CLIENT' | 'PAYMENT' | 'SETTINGS';
 
 export interface LogEntry {
   id: string;
-  timestamp: string; // ISO String
+  timestamp: string;
   action: LogActionType;
   entity: LogEntityType;
   description: string;
-  clientId?: string; // Optional context
-  clientName?: string; // Snapshot of name for display
+  clientId?: string;
+  clientName?: string;
 }
