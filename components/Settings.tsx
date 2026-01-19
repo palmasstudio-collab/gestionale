@@ -4,7 +4,7 @@ import { Client, TaxRate, LogActionType, LogEntityType } from '../types';
 import { ATECO_ACTIVITIES } from '../constants';
 import { Card } from './Card';
 import { Button } from './Button';
-import { Save, Loader2, Database, CheckCircle, XCircle, AlertCircle, ExternalLink } from 'lucide-react';
+import { Save, Loader2, Database, CheckCircle, XCircle, AlertCircle, ExternalLink, FolderOpen } from 'lucide-react';
 import { createClientStructure, handleAuthClick } from '../utils/googleDrive';
 
 interface SettingsProps {
@@ -24,7 +24,7 @@ export const Settings: React.FC<SettingsProps> = ({ client, onUpdateClient, onLo
     setFormData(client);
     setHasChanges(false);
     setErrorMsg(null);
-  }, [client.id, client.spreadsheetId]);
+  }, [client.id, client.spreadsheetId, client.rootFolderId]);
   
   const handleActivityChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
     const activityId = e.target.value;
@@ -50,28 +50,28 @@ export const Settings: React.FC<SettingsProps> = ({ client, onUpdateClient, onLo
 
     const isDriveAuth = typeof window !== 'undefined' && (window as any).gapi?.client?.getToken() !== null;
     
-    if (confirm(`Dati salvati localmente.\n\nVuoi attivare ora la sincronizzazione Google Drive e creare il Database Excel per questo cliente?`)) {
+    if (confirm(`Vuoi sincronizzare le cartelle e il Database Cloud per questo cliente?`)) {
       if (!isDriveReady) {
-        alert("Sincronizzazione API in corso... Attendi 2 secondi.");
+        alert("Servizi Google non ancora pronti.");
         return;
       }
 
       setIsCreatingFolders(true);
       try {
-        // Forza sempre il check di autorizzazione se proviamo a creare la struttura
         await handleAuthClick();
-        
         const result = await createClientStructure(formData.name);
         
-        const updatedClient = { ...formData, spreadsheetId: result.spreadsheetId };
+        const updatedClient = { 
+          ...formData, 
+          spreadsheetId: result.spreadsheetId,
+          rootFolderId: result.rootFolderId 
+        };
         onUpdateClient(updatedClient);
         setFormData(updatedClient);
         
-        alert('Configurazione Cloud completata con successo!');
+        alert('Configurazione Cloud completata!');
       } catch (err: any) {
-        console.error("Errore critico Cloud:", err);
-        const msg = err.message || "Impossibile contattare i server Google.";
-        setErrorMsg(msg);
+        setErrorMsg(err.message || "Errore durante la sincronizzazione cloud.");
       } finally {
         setIsCreatingFolders(false);
       }
@@ -93,25 +93,11 @@ export const Settings: React.FC<SettingsProps> = ({ client, onUpdateClient, onLo
       {errorMsg && (
         <div className="bg-red-50 border-l-4 border-red-500 p-5 rounded-lg flex gap-4 text-red-800 animate-fade-in shadow-sm">
            <AlertCircle className="w-6 h-6 flex-shrink-0" />
-           <div className="space-y-3">
-             <p className="font-bold text-lg">Errore di Sincronizzazione Cloud</p>
-             <p className="text-sm bg-white/50 p-2 rounded border border-red-200 font-mono">{errorMsg}</p>
-             
-             <div className="text-sm space-y-2">
-               <p className="font-semibold">Possibili soluzioni:</p>
-               <ul className="list-disc list-inside space-y-1 opacity-90">
-                 <li>Abilita le <strong>Google Sheets API</strong> nella Console di Google.</li>
-                 <li>Assicurati di spuntare la casella <strong>"Visualizza, modifica, crea... fogli di calcolo"</strong> nel popup di Google.</li>
-                 <li>Riprova a cliccare su Salva per rigenerare il token.</li>
-               </ul>
-             </div>
-             
-             <a 
-               href="https://console.cloud.google.com/apis/library/sheets.googleapis.com" 
-               target="_blank" 
-               className="inline-flex items-center text-xs font-bold text-red-600 hover:underline bg-white px-3 py-1.5 rounded-md border border-red-200"
-             >
-               <ExternalLink className="w-3 h-3 mr-1" /> Vai alla Console Google per abilitare Sheets
+           <div className="space-y-3 text-sm">
+             <p className="font-bold">Errore di Sincronizzazione Cloud</p>
+             <p className="font-mono">{errorMsg}</p>
+             <a href="https://console.cloud.google.com/apis/library/sheets.googleapis.com" target="_blank" className="inline-flex items-center text-xs font-bold text-red-600 hover:underline">
+               <ExternalLink className="w-3 h-3 mr-1" /> Verifica API Sheets
              </a>
            </div>
         </div>
@@ -132,32 +118,29 @@ export const Settings: React.FC<SettingsProps> = ({ client, onUpdateClient, onLo
         </div>
       </Card>
       
-      <Card title="Dati Anagrafici">
+      <Card title="Dati Anagrafici & Stato Cloud">
         <form onSubmit={handleSave} className="space-y-4">
           <input type="text" name="name" value={formData.name} onChange={handleChange} placeholder="Ragione Sociale" className="w-full rounded-md border-gray-300 border p-2 focus:ring-indigo-500" />
           <input type="text" name="fiscalCode" value={formData.fiscalCode} onChange={handleChange} placeholder="Codice Fiscale / P.IVA" className="w-full rounded-md border-gray-300 border p-2 focus:ring-indigo-500" />
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Aliquota Imposta</label>
-              <select name="taxRate" value={formData.taxRate} onChange={handleChange} className="w-full rounded-md border-gray-300 border p-2">
-                <option value={TaxRate.STARTUP}>5% (Primi 5 anni)</option>
-                <option value={TaxRate.STANDARD}>15% (Standard)</option>
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Infrastruttura Cloud Studio</label>
-              <div className={`p-2 rounded border flex items-center gap-2 ${formData.spreadsheetId ? 'bg-green-50 border-green-200 text-green-700' : 'bg-gray-50 border-gray-200 text-gray-400'}`}>
-                <Database className="w-4 h-4" />
-                <span className="text-xs font-bold truncate">
-                  {formData.spreadsheetId ? 'Database Excel Attivo' : 'Cloud non inizializzato'}
-                </span>
-                {formData.spreadsheetId ? <CheckCircle className="w-3 h-3 ml-auto text-green-500" /> : <XCircle className="w-3 h-3 ml-auto text-gray-300" />}
+            <div className={`p-3 rounded-lg border flex items-center gap-3 ${formData.spreadsheetId ? 'bg-green-50 border-green-200 text-green-700' : 'bg-gray-50 border-gray-200 text-gray-400'}`}>
+              <Database className="w-5 h-5" />
+              <div className="flex-1">
+                <p className="text-[10px] uppercase font-bold opacity-60">Database Excel</p>
+                <p className="text-xs font-bold">{formData.spreadsheetId ? 'Sincronizzato' : 'Non Inizializzato'}</p>
               </div>
+              {formData.spreadsheetId && <CheckCircle className="w-4 h-4 text-green-500" />}
+            </div>
+            <div className={`p-3 rounded-lg border flex items-center gap-3 ${formData.rootFolderId ? 'bg-indigo-50 border-indigo-200 text-indigo-700' : 'bg-gray-50 border-gray-200 text-gray-400'}`}>
+              <FolderOpen className="w-5 h-5" />
+              <div className="flex-1">
+                <p className="text-[10px] uppercase font-bold opacity-60">Archivio Documentale</p>
+                <p className="text-xs font-bold">{formData.rootFolderId ? 'Cartelle Cloud Attive' : 'Non Inizializzato'}</p>
+              </div>
+              {formData.rootFolderId && <CheckCircle className="w-4 h-4 text-indigo-500" />}
             </div>
           </div>
-
-          <textarea name="notes" value={formData.notes || ''} onChange={handleChange} className="w-full rounded-md border-gray-300 border p-2 h-24" placeholder="Note interne per lo studio..." />
         </form>
       </Card>
     </div>
