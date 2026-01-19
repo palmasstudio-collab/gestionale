@@ -4,7 +4,7 @@ import { Invoice, PaymentStatus, Client, LogActionType, LogEntityType } from '..
 import { ATECO_ACTIVITIES } from '../constants';
 import { Card } from './Card';
 import { Button } from './Button';
-import { Plus, X, DollarSign, CloudSync, RefreshCw, AlertCircle, Paperclip, FileCheck, Loader2 } from 'lucide-react';
+import { Plus, X, DollarSign, CloudSync, RefreshCw, AlertCircle, Paperclip, FileCheck, Loader2, Lock } from 'lucide-react';
 import { syncInvoiceToSpreadsheet, handleAuthClick, findSubfolderId, uploadFileToDrive } from '../utils/googleDrive';
 
 interface InvoiceManagerProps {
@@ -22,6 +22,9 @@ export const InvoiceManager: React.FC<InvoiceManagerProps> = ({ client, allInvoi
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   
   const activityConfig = ATECO_ACTIVITIES.find(a => a.id === client.activityId);
+
+  // Determina se Google è autenticato guardando il token globale della libreria
+  const isGoogleAuthenticated = typeof window !== 'undefined' && (window as any).gapi?.client?.getToken() !== null;
 
   const [newInvoice, setNewInvoice] = useState<Partial<Invoice>>({
     status: PaymentStatus.PAID,
@@ -47,8 +50,9 @@ export const InvoiceManager: React.FC<InvoiceManagerProps> = ({ client, allInvoi
     let driveFileId: string | undefined = undefined;
 
     try {
-      const isDriveAuth = typeof window !== 'undefined' && (window as any).gapi?.client?.getToken() !== null;
-      if (!isDriveAuth) await handleAuthClick();
+      if (!isGoogleAuthenticated) {
+        await handleAuthClick();
+      }
 
       // 1. Caricamento File PDF se presente
       if (selectedFile && client.rootFolderId) {
@@ -115,12 +119,21 @@ export const InvoiceManager: React.FC<InvoiceManagerProps> = ({ client, allInvoi
         </div>
       </div>
 
-      {!client.rootFolderId && (
-        <div className="bg-amber-50 border border-amber-200 p-4 rounded-lg flex items-center gap-3 text-amber-800">
-           <AlertCircle className="w-5 h-5 flex-shrink-0" />
-           <p className="text-sm">Attenzione: Le cartelle Cloud non sono attive. Vai in <strong>Anagrafica</strong> e salva per abilitare l'archiviazione PDF.</p>
+      {/* Avvisi Cloud Intelligenti */}
+      {!isGoogleAuthenticated ? (
+        <div className="bg-amber-50 border border-amber-200 p-4 rounded-lg flex items-center justify-between text-amber-800">
+           <div className="flex items-center gap-3">
+             <Lock className="w-5 h-5 text-amber-600" />
+             <p className="text-sm">L'accesso al Cloud non è attivo. Le fatture non verranno archiviate su Drive.</p>
+           </div>
+           <Button onClick={() => handleAuthClick()} size="sm" variant="secondary">Accedi</Button>
         </div>
-      )}
+      ) : !client.rootFolderId ? (
+        <div className="bg-blue-50 border border-blue-200 p-4 rounded-lg flex items-center gap-3 text-blue-800 font-medium">
+           <AlertCircle className="w-5 h-5 flex-shrink-0" />
+           <p className="text-sm">Sei connesso al Cloud, ma le cartelle per questo cliente non sono state create. Vai in <strong>Anagrafica</strong> e clicca su <strong>Salva Modifiche</strong>.</p>
+        </div>
+      ) : null}
 
       {isAdding && (
         <Card title="Nuova Fattura" className="mb-6 animate-fade-in border-t-4 border-t-indigo-500">
@@ -168,7 +181,7 @@ export const InvoiceManager: React.FC<InvoiceManagerProps> = ({ client, allInvoi
                    className="hidden" 
                  />
                  <div className="flex items-center gap-3">
-                    <Button type="button" variant="secondary" onClick={() => fileInputRef.current?.click()} disabled={!client.rootFolderId}>
+                    <Button type="button" variant="secondary" onClick={() => fileInputRef.current?.click()} disabled={!client.rootFolderId || !isGoogleAuthenticated}>
                        {selectedFile ? 'Cambia PDF' : 'Seleziona PDF'}
                     </Button>
                     {selectedFile && (
