@@ -4,7 +4,7 @@ import { Invoice, PaymentStatus, Client, LogActionType, LogEntityType } from '..
 import { ATECO_ACTIVITIES } from '../constants';
 import { Card } from './Card';
 import { Button } from './Button';
-import { Plus, Check, X, Calendar, DollarSign, Calculator, Paperclip, FileText, CloudSync } from 'lucide-react';
+import { Plus, X, DollarSign, CloudSync, RefreshCw, AlertCircle } from 'lucide-react';
 import { syncInvoiceToSpreadsheet, handleAuthClick } from '../utils/googleDrive';
 
 interface InvoiceManagerProps {
@@ -14,22 +14,9 @@ interface InvoiceManagerProps {
   onLog: (action: LogActionType, entity: LogEntityType, description: string, clientId?: string) => void;
 }
 
-const base64ToBlob = (base64: string) => {
-  try {
-    const arr = base64.split(',');
-    const mime = arr[0].match(/:(.*?);/)?.[1] || 'application/octet-stream';
-    const bstr = atob(arr[1]);
-    let n = bstr.length;
-    const u8arr = new Uint8Array(n);
-    while (n--) { u8arr[n] = bstr.charCodeAt(n); }
-    return new Blob([u8arr], { type: mime });
-  } catch (e) { return null; }
-};
-
 export const InvoiceManager: React.FC<InvoiceManagerProps> = ({ client, allInvoices, setAllInvoices, onLog }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
   
   const activityConfig = ATECO_ACTIVITIES.find(a => a.id === client.activityId);
 
@@ -40,8 +27,6 @@ export const InvoiceManager: React.FC<InvoiceManagerProps> = ({ client, allInvoi
     taxableAmount: 0,
     cassaAmount: 0,
     amount: 0,
-    fileName: undefined,
-    attachment: undefined
   });
 
   useEffect(() => {
@@ -68,14 +53,12 @@ export const InvoiceManager: React.FC<InvoiceManagerProps> = ({ client, allInvoi
       taxableAmount: Number(newInvoice.taxableAmount),
       cassaAmount: Number(newInvoice.cassaAmount),
       amount: Number(newInvoice.amount),
-      attachment: newInvoice.attachment,
-      fileName: newInvoice.fileName
     };
 
     setAllInvoices(prev => [...prev, invoice]);
     onLog('CREATE', 'INVOICE', `Creata fattura n. ${invoice.number} per ${invoice.clientName}`, client.id);
 
-    // --- SINCRONIZZAZIONE GOOGLE SHEETS ---
+    // --- SINCRONIZZAZIONE AUTOMATICA SHEETS ---
     if (client.spreadsheetId) {
       setIsSyncing(true);
       try {
@@ -93,8 +76,32 @@ export const InvoiceManager: React.FC<InvoiceManagerProps> = ({ client, allInvoi
     setNewInvoice({
       status: PaymentStatus.PAID, date: new Date().toISOString().split('T')[0],
       paymentDate: new Date().toISOString().split('T')[0], number: '', clientName: '',
-      taxableAmount: 0, cassaAmount: 0, amount: 0, fileName: undefined, attachment: undefined
+      taxableAmount: 0, cassaAmount: 0, amount: 0
     });
+  };
+
+  const handleMassSync = async () => {
+    if (!client.spreadsheetId) {
+      alert("Crea prima il database in Anagrafica.");
+      return;
+    }
+
+    if (!confirm(`Vuoi esportare tutte le ${clientInvoices.length} fatture attuali nel database Google Sheets?`)) return;
+
+    setIsSyncing(true);
+    try {
+      const isDriveAuth = typeof window !== 'undefined' && (window as any).gapi?.client?.getToken() !== null;
+      if (!isDriveAuth) await handleAuthClick();
+      
+      for (const inv of clientInvoices) {
+        await syncInvoiceToSpreadsheet(client.spreadsheetId, inv);
+      }
+      alert("Tutte le fatture sono state sincronizzate nel database Excel!");
+    } catch (err) {
+      alert("Errore durante la sincronizzazione massiva.");
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   const toggleStatus = (id: string) => {
@@ -124,10 +131,11 @@ export const InvoiceManager: React.FC<InvoiceManagerProps> = ({ client, allInvoi
            <p className="text-sm text-gray-500">Configurazione: {activityConfig?.code || 'N.D.'}</p>
         </div>
         <div className="flex items-center gap-2">
-           {isSyncing && (
-             <span className="text-xs text-indigo-600 flex items-center animate-pulse mr-2">
-               <CloudSync className="w-4 h-4 mr-1" /> Sincro Excel...
-             </span>
+           {client.spreadsheetId && (
+             <Button variant="secondary" size="sm" onClick={handleMassSync} disabled={isSyncing}>
+                {isSyncing ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <CloudSync className="w-4 h-4 mr-2" />}
+                Sincronizza Database
+             </Button>
            )}
            <Button onClick={() => setIsAdding(!isAdding)}>
             <Plus className="w-4 h-4 mr-2" />
@@ -135,6 +143,13 @@ export const InvoiceManager: React.FC<InvoiceManagerProps> = ({ client, allInvoi
           </Button>
         </div>
       </div>
+
+      {!client.spreadsheetId && (
+        <div className="bg-amber-50 border border-amber-200 p-4 rounded-lg flex items-center gap-3 text-amber-800">
+           <AlertCircle className="w-5 h-5 flex-shrink-0" />
+           <p className="text-sm">Il <strong>Database Excel</strong> non è ancora stato creato per questo cliente. Vai in <strong>Anagrafica</strong> e clicca su <strong>Salva Modifiche</strong> per inizializzarlo.</p>
+        </div>
+      )}
 
       {isAdding && (
         <Card title="Nuova Fattura" className="mb-6 animate-fade-in border-t-4 border-t-indigo-500">
@@ -169,7 +184,10 @@ export const InvoiceManager: React.FC<InvoiceManagerProps> = ({ client, allInvoi
 
             <div className="lg:col-span-12 flex justify-end gap-2 mt-2">
               <Button type="button" variant="secondary" onClick={() => setIsAdding(false)}>Annulla</Button>
-              <Button type="submit">Salva Fattura</Button>
+              <Button type="submit">
+                {isSyncing && <RefreshCw className="w-4 h-4 mr-2 animate-spin" />}
+                Salva Fattura
+              </Button>
             </div>
           </form>
         </Card>
@@ -190,7 +208,7 @@ export const InvoiceManager: React.FC<InvoiceManagerProps> = ({ client, allInvoi
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {clientInvoices.length === 0 ? (
-                 <tr><td colSpan={6} className="px-6 py-8 text-center text-gray-500">Nessuna fattura.</td></tr>
+                 <tr><td colSpan={6} className="px-6 py-8 text-center text-gray-500">Nessuna fattura presente.</td></tr>
               ) : (
                 clientInvoices.map((inv) => (
                   <tr key={inv.id} className="hover:bg-gray-50">
@@ -202,8 +220,8 @@ export const InvoiceManager: React.FC<InvoiceManagerProps> = ({ client, allInvoi
                     <td className="px-6 py-4 text-sm text-gray-900">{inv.clientName}</td>
                     <td className="px-6 py-4 text-right text-sm font-bold text-gray-900">€ {inv.amount.toFixed(2)}</td>
                     <td className="px-6 py-4 text-right text-sm font-medium flex justify-end gap-2">
-                      <button onClick={() => toggleStatus(inv.id)} className="p-1 text-indigo-600 hover:bg-indigo-50 rounded"><DollarSign className="w-4 h-4" /></button>
-                      <button onClick={() => deleteInvoice(inv.id)} className="p-1 text-red-600 hover:bg-red-50 rounded"><X className="w-4 h-4" /></button>
+                      <button onClick={() => toggleStatus(inv.id)} className="p-1 text-indigo-600 hover:bg-indigo-50 rounded" title="Cambia Stato Pagamento"><DollarSign className="w-4 h-4" /></button>
+                      <button onClick={() => deleteInvoice(inv.id)} className="p-1 text-red-600 hover:bg-red-50 rounded" title="Elimina"><X className="w-4 h-4" /></button>
                     </td>
                   </tr>
                 ))
