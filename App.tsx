@@ -13,14 +13,17 @@ import { QuadroLMGenerator } from './components/QuadroLMGenerator';
 import { InpsManager } from './components/InpsManager';
 import { ActivityLogView } from './components/ActivityLogView';
 import { CloudBackup } from './components/CloudBackup';
-import { initGoogleDrive } from './utils/googleDrive';
-import { LogOut, Menu, ArrowLeft, Building2 } from 'lucide-react';
+import { initGoogleDrive, handleAuthClick } from './utils/googleDrive';
+import { LogOut, Menu, ArrowLeft, Building2, Cloud, CloudOff } from 'lucide-react';
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  
+  // STATI GLOBALI GOOGLE
   const [isDriveReady, setIsDriveReady] = useState(false);
+  const [isGoogleAuthenticated, setIsGoogleAuthenticated] = useState(false);
   
   const [clients, setClients] = useState<Client[]>(() => {
     const saved = localStorage.getItem('forfettario_clients');
@@ -47,8 +50,14 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : [];
   });
 
+  // Inizializzazione Google con controllo sessione esistente
   useEffect(() => {
-    initGoogleDrive((ready) => setIsDriveReady(ready));
+    initGoogleDrive((ready) => {
+      setIsDriveReady(ready);
+      // Verifica se esiste già un token in memoria (es. sessione attiva)
+      const token = (window as any).gapi?.client?.getToken();
+      if (token) setIsGoogleAuthenticated(true);
+    });
   }, []);
 
   useEffect(() => localStorage.setItem('forfettario_clients', JSON.stringify(clients)), [clients]);
@@ -69,6 +78,16 @@ const App: React.FC = () => {
       clientName
     };
     setLogs(prev => [newLog, ...prev]);
+  };
+
+  const handleGlobalGoogleLogin = async () => {
+    try {
+      await handleAuthClick();
+      setIsGoogleAuthenticated(true);
+      addLog('UPDATE', 'SETTINGS', 'Accesso Google effettuato con successo');
+    } catch (err) {
+      console.error("Login fallito", err);
+    }
   };
 
   const handleRestoreFromCloud = (data: any) => {
@@ -137,7 +156,15 @@ const App: React.FC = () => {
         case 'studio-params':
           return <ParametersManager config={globalConfig} setConfig={setGlobalConfig} />;
         case 'cloud-backup':
-          return <CloudBackup appState={{ clients, invoices, inpsPayments, globalConfig, logs }} onRestore={handleRestoreFromCloud} isDriveReady={isDriveReady} />;
+          return (
+            <CloudBackup 
+              appState={{ clients, invoices, inpsPayments, globalConfig, logs }} 
+              onRestore={handleRestoreFromCloud} 
+              isDriveReady={isDriveReady} 
+              isAuthenticated={isGoogleAuthenticated}
+              onLogin={handleGlobalGoogleLogin}
+            />
+          );
         default:
           return <StudioDashboard clients={clients} invoices={invoices} onSelectClient={handleSelectClient} onAddClient={handleAddClient} onDeleteClient={handleDeleteClient} annualRevenueLimit={globalConfig.annualRevenueLimit} />;
       }
@@ -159,7 +186,16 @@ const App: React.FC = () => {
       case 'advisor':
         return <AiAdvisor client={activeClient} invoices={clientInvoices} />;
       case 'settings':
-        return <Settings client={activeClient} onUpdateClient={handleUpdateClient} onLog={addLog} isDriveReady={isDriveReady} />;
+        return (
+          <Settings 
+            client={activeClient} 
+            onUpdateClient={handleUpdateClient} 
+            onLog={addLog} 
+            isDriveReady={isDriveReady}
+            isAuthenticated={isGoogleAuthenticated}
+            onLogin={handleGlobalGoogleLogin}
+          />
+        );
       default:
         return <Dashboard invoices={clientInvoices} client={activeClient} annualRevenueLimit={globalConfig.annualRevenueLimit} />;
     }
@@ -167,6 +203,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col md:flex-row">
+      {/* Mobile Header */}
       <div className="md:hidden bg-white border-b p-4 flex justify-between items-center sticky top-0 z-20">
         <h1 className="font-bold text-xl text-indigo-700">Studio Palmas</h1>
         <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="p-2 rounded-md hover:bg-gray-100">
@@ -187,6 +224,18 @@ const App: React.FC = () => {
                  <Building2 className="w-6 h-6 text-indigo-600 mr-2" />
                  <span className="text-xl font-bold text-gray-900">Studio Palmas</span>
                </div>
+            )}
+          </div>
+
+          {/* Status Bar Google in Sidebar */}
+          <div className="px-6 py-3 border-b border-gray-100 flex items-center justify-between text-[10px] font-bold uppercase tracking-widest">
+            <span className="text-gray-400">Cloud Status</span>
+            {isGoogleAuthenticated ? (
+              <span className="flex items-center text-green-600 gap-1"><Cloud className="w-3 h-3"/> Active</span>
+            ) : (
+              <button onClick={handleGlobalGoogleLogin} className="flex items-center text-amber-500 gap-1 hover:text-amber-600 transition-colors">
+                <CloudOff className="w-3 h-3"/> Login
+              </button>
             )}
           </div>
 
