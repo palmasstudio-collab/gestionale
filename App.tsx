@@ -22,7 +22,6 @@ const App: React.FC = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [isDriveReady, setIsDriveReady] = useState(false);
   
-  // -- STATE MANAGEMENT --
   const [clients, setClients] = useState<Client[]>(() => {
     const saved = localStorage.getItem('forfettario_clients');
     return saved ? JSON.parse(saved) : MOCK_CLIENTS;
@@ -48,35 +47,16 @@ const App: React.FC = () => {
     return saved ? JSON.parse(saved) : [];
   });
 
-  // -- GOOGLE DRIVE INITIALIZATION --
   useEffect(() => {
-    initGoogleDrive((ready) => {
-      setIsDriveReady(ready);
-    });
+    initGoogleDrive((ready) => setIsDriveReady(ready));
   }, []);
 
-  // -- PERSISTENCE --
-  useEffect(() => {
-    localStorage.setItem('forfettario_clients', JSON.stringify(clients));
-  }, [clients]);
+  useEffect(() => localStorage.setItem('forfettario_clients', JSON.stringify(clients)), [clients]);
+  useEffect(() => localStorage.setItem('forfettario_invoices', JSON.stringify(invoices)), [invoices]);
+  useEffect(() => localStorage.setItem('forfettario_inps', JSON.stringify(inpsPayments)), [inpsPayments]);
+  useEffect(() => localStorage.setItem('forfettario_config', JSON.stringify(globalConfig)), [globalConfig]);
+  useEffect(() => localStorage.setItem('forfettario_logs', JSON.stringify(logs)), [logs]);
 
-  useEffect(() => {
-    localStorage.setItem('forfettario_invoices', JSON.stringify(invoices));
-  }, [invoices]);
-
-  useEffect(() => {
-    localStorage.setItem('forfettario_inps', JSON.stringify(inpsPayments));
-  }, [inpsPayments]);
-
-  useEffect(() => {
-    localStorage.setItem('forfettario_config', JSON.stringify(globalConfig));
-  }, [globalConfig]);
-
-  useEffect(() => {
-    localStorage.setItem('forfettario_logs', JSON.stringify(logs));
-  }, [logs]);
-
-  // -- LOGGING HELPER --
   const addLog = (action: LogActionType, entity: LogEntityType, description: string, clientId?: string) => {
     const clientName = clientId ? clients.find(c => c.id === clientId)?.name : undefined;
     const newLog: LogEntry = {
@@ -91,7 +71,6 @@ const App: React.FC = () => {
     setLogs(prev => [newLog, ...prev]);
   };
 
-  // -- RESTORE HANDLER --
   const handleRestoreFromCloud = (data: any) => {
     if (data.clients) setClients(data.clients);
     if (data.invoices) setInvoices(data.invoices);
@@ -99,10 +78,8 @@ const App: React.FC = () => {
     if (data.globalConfig) setGlobalConfig(data.globalConfig);
     if (data.logs) setLogs(data.logs);
     addLog('UPDATE', 'SETTINGS', 'Ripristinato backup da Google Drive');
-    alert("Dati ripristinati correttamente.");
   };
 
-  // -- HANDLERS --
   const handleSelectClient = (clientId: string) => {
     setSelectedClientId(clientId);
     setActiveTab('dashboard');
@@ -138,16 +115,12 @@ const App: React.FC = () => {
   const handleDeleteClient = (clientId: string) => {
     const clientToRemove = clients.find(c => c.id === clientId);
     if (!clientToRemove) return;
-
-    if (window.confirm(`Sei sicuro di voler eliminare definitivamente il cliente "${clientToRemove.name}"?\n\nVerranno eliminate anche tutte le fatture e i versamenti associati.`)) {
+    if (window.confirm(`Eliminare definitivamente il cliente "${clientToRemove.name}"?`)) {
        setClients(prev => prev.filter(c => c.id !== clientId));
        setInvoices(prev => prev.filter(inv => inv.clientId !== clientId));
        setInpsPayments(prev => prev.filter(p => p.clientId !== clientId));
        addLog('DELETE', 'CLIENT', `Eliminato cliente ${clientToRemove.name}`, clientId);
-       if (selectedClientId === clientId) {
-         setSelectedClientId(null);
-         setActiveTab('studio-dashboard');
-       }
+       if (selectedClientId === clientId) setSelectedClientId(null);
     }
   };
 
@@ -158,44 +131,15 @@ const App: React.FC = () => {
     if (!selectedClientId) {
       switch (activeTab) {
         case 'studio-dashboard':
-          return (
-            <StudioDashboard 
-              clients={clients} 
-              invoices={invoices} 
-              onSelectClient={handleSelectClient} 
-              onAddClient={handleAddClient}
-              onDeleteClient={handleDeleteClient}
-              annualRevenueLimit={globalConfig.annualRevenueLimit}
-            />
-          );
+          return <StudioDashboard clients={clients} invoices={invoices} onSelectClient={handleSelectClient} onAddClient={handleAddClient} onDeleteClient={handleDeleteClient} annualRevenueLimit={globalConfig.annualRevenueLimit} />;
         case 'activity-log':
           return <ActivityLogView logs={logs} />;
         case 'studio-params':
-          return (
-            <ParametersManager 
-              config={globalConfig} 
-              setConfig={setGlobalConfig}
-            />
-          );
+          return <ParametersManager config={globalConfig} setConfig={setGlobalConfig} />;
         case 'cloud-backup':
-          return (
-            <CloudBackup 
-              appState={{ clients, invoices, inpsPayments, globalConfig, logs }} 
-              onRestore={handleRestoreFromCloud}
-              isDriveReady={isDriveReady}
-            />
-          );
+          return <CloudBackup appState={{ clients, invoices, inpsPayments, globalConfig, logs }} onRestore={handleRestoreFromCloud} isDriveReady={isDriveReady} />;
         default:
-          return (
-            <StudioDashboard 
-              clients={clients} 
-              invoices={invoices} 
-              onSelectClient={handleSelectClient} 
-              onAddClient={handleAddClient}
-              onDeleteClient={handleDeleteClient}
-              annualRevenueLimit={globalConfig.annualRevenueLimit}
-            />
-          );
+          return <StudioDashboard clients={clients} invoices={invoices} onSelectClient={handleSelectClient} onAddClient={handleAddClient} onDeleteClient={handleDeleteClient} annualRevenueLimit={globalConfig.annualRevenueLimit} />;
       }
     }
 
@@ -205,23 +149,9 @@ const App: React.FC = () => {
       case 'dashboard':
         return <Dashboard invoices={clientInvoices} client={activeClient} annualRevenueLimit={globalConfig.annualRevenueLimit} />;
       case 'invoices':
-        return (
-          <InvoiceManager 
-            client={activeClient} 
-            allInvoices={invoices} 
-            setAllInvoices={setInvoices} 
-            onLog={addLog}
-          />
-        );
+        return <InvoiceManager client={activeClient} allInvoices={invoices} setAllInvoices={setInvoices} onLog={addLog} />;
       case 'inps':
-        return (
-          <InpsManager 
-            clientId={activeClient.id} 
-            payments={inpsPayments} 
-            setPayments={setInpsPayments}
-            onLog={addLog}
-          />
-        );
+        return <InpsManager clientId={activeClient.id} payments={inpsPayments} setPayments={setInpsPayments} onLog={addLog} client={activeClient} />;
       case 'taxes':
         return <TaxSimulator invoices={clientInvoices} client={activeClient} taxConfig={globalConfig} />;
       case 'quadro-lm':
@@ -229,14 +159,7 @@ const App: React.FC = () => {
       case 'advisor':
         return <AiAdvisor client={activeClient} invoices={clientInvoices} />;
       case 'settings':
-        return (
-          <Settings 
-            client={activeClient} 
-            onUpdateClient={handleUpdateClient} 
-            onLog={addLog}
-            isDriveReady={isDriveReady}
-          />
-        );
+        return <Settings client={activeClient} onUpdateClient={handleUpdateClient} onLog={addLog} isDriveReady={isDriveReady} />;
       default:
         return <Dashboard invoices={clientInvoices} client={activeClient} annualRevenueLimit={globalConfig.annualRevenueLimit} />;
     }
@@ -251,10 +174,7 @@ const App: React.FC = () => {
         </button>
       </div>
 
-      <aside className={`
-        fixed inset-y-0 left-0 z-10 w-64 bg-white border-r border-gray-200 transform transition-transform duration-200 ease-in-out md:translate-x-0 md:static
-        ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}
-      `}>
+      <aside className={`fixed inset-y-0 left-0 z-10 w-64 bg-white border-r border-gray-200 transform transition-transform duration-200 ease-in-out md:translate-x-0 md:static ${mobileMenuOpen ? 'translate-x-0' : '-translate-x-full'}`}>
         <div className="h-full flex flex-col">
           <div className="h-16 flex items-center px-6 border-b border-gray-200">
             {selectedClientId ? (
@@ -274,62 +194,30 @@ const App: React.FC = () => {
             <div className="px-4 py-4 bg-indigo-50 border-b border-indigo-100">
               <p className="text-xs font-semibold text-indigo-500 uppercase tracking-wider mb-1">Cliente Selezionato</p>
               <p className="font-bold text-indigo-900 truncate">{activeClient.name}</p>
-              <div className="flex justify-between items-center">
-                 <p className="text-xs text-indigo-700">{activeClient.atecoCode || 'N.D.'}</p>
-                 <span className={`text-[10px] px-2 py-0.5 rounded-full ${activeClient.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                   {activeClient.status === 'active' ? 'Attivo' : 'Cessato'}
-                 </span>
-              </div>
             </div>
           )}
 
           <div className="flex-1 px-4 py-6 space-y-1 overflow-y-auto">
-            {!selectedClientId ? (
-               STUDIO_MENU_ITEMS.map((item) => {
+            {!selectedClientId ? STUDIO_MENU_ITEMS.map((item) => {
                  const Icon = item.icon;
                  const isActive = activeTab === item.id;
                  return (
-                  <button
-                    key={item.id}
-                    onClick={() => { setActiveTab(item.id); setMobileMenuOpen(false); }}
-                    className={`w-full flex items-center px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                      isActive 
-                        ? 'bg-indigo-50 text-indigo-700' 
-                        : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
-                    }`}
-                  >
+                  <button key={item.id} onClick={() => { setActiveTab(item.id); setMobileMenuOpen(false); }} className={`w-full flex items-center px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${isActive ? 'bg-indigo-50 text-indigo-700' : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'}`}>
                     <Icon className={`w-5 h-5 mr-3 ${isActive ? 'text-indigo-600' : 'text-gray-400'}`} />
                     {item.label}
                   </button>
                  );
-               })
-            ) : (
-              CLIENT_MENU_ITEMS.map((item) => {
+               }) : CLIENT_MENU_ITEMS.map((item) => {
                 const Icon = item.icon;
                 const isActive = activeTab === item.id;
                 return (
-                  <button
-                    key={item.id}
-                    onClick={() => { setActiveTab(item.id); setMobileMenuOpen(false); }}
-                    className={`w-full flex items-center px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
-                      isActive 
-                        ? 'bg-indigo-50 text-indigo-700' 
-                        : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'
-                    }`}
-                  >
+                  <button key={item.id} onClick={() => { setActiveTab(item.id); setMobileMenuOpen(false); }} className={`w-full flex items-center px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${isActive ? 'bg-indigo-50 text-indigo-700' : 'text-gray-700 hover:bg-gray-50 hover:text-gray-900'}`}>
                     <Icon className={`w-5 h-5 mr-3 ${isActive ? 'text-indigo-600' : 'text-gray-400'}`} />
                     {item.label}
                   </button>
                 );
               })
-            )}
-          </div>
-
-          <div className="p-4 border-t border-gray-200">
-            <button className="w-full flex items-center px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-              <LogOut className="w-5 h-5 mr-3" />
-              Esci
-            </button>
+            }
           </div>
         </div>
       </aside>
@@ -337,24 +225,14 @@ const App: React.FC = () => {
       <main className="flex-1 overflow-y-auto">
         <header className="bg-white shadow-sm sticky top-0 z-10 px-8 py-4 hidden md:block">
            <h2 className="text-2xl font-bold text-gray-800">
-             {!selectedClientId 
-               ? STUDIO_MENU_ITEMS.find(i => i.id === activeTab)?.label 
-               : CLIENT_MENU_ITEMS.find(i => i.id === activeTab)?.label
-             }
+             {!selectedClientId ? STUDIO_MENU_ITEMS.find(i => i.id === activeTab)?.label : CLIENT_MENU_ITEMS.find(i => i.id === activeTab)?.label}
            </h2>
         </header>
 
-        <div className="p-4 md:p-8 max-w-7xl mx-auto">
-          {renderContent()}
-        </div>
+        <div className="p-4 md:p-8 max-w-7xl mx-auto">{renderContent()}</div>
       </main>
 
-      {mobileMenuOpen && (
-        <div 
-          className="fixed inset-0 bg-gray-800 bg-opacity-50 z-0 md:hidden"
-          onClick={() => setMobileMenuOpen(false)}
-        ></div>
-      )}
+      {mobileMenuOpen && <div className="fixed inset-0 bg-gray-800 bg-opacity-50 z-0 md:hidden" onClick={() => setMobileMenuOpen(false)}></div>}
     </div>
   );
 };
