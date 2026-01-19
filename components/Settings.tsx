@@ -4,17 +4,19 @@ import { Client, TaxRate, LogActionType, LogEntityType } from '../types';
 import { ATECO_ACTIVITIES } from '../constants';
 import { Card } from './Card';
 import { Button } from './Button';
-import { Save, Loader2, Database, CheckCircle, XCircle, AlertCircle, ExternalLink, FolderOpen } from 'lucide-react';
-import { createClientStructure, handleAuthClick } from '../utils/googleDrive';
+import { Save, Loader2, Database, CheckCircle, XCircle, AlertCircle, ExternalLink, FolderOpen, Lock } from 'lucide-react';
+import { createClientStructure } from '../utils/googleDrive';
 
 interface SettingsProps {
   client: Client;
   onUpdateClient: (client: Client) => void;
   onLog: (action: LogActionType, entity: LogEntityType, description: string, clientId?: string) => void;
   isDriveReady: boolean;
+  isAuthenticated: boolean;
+  onLogin: () => Promise<void>;
 }
 
-export const Settings: React.FC<SettingsProps> = ({ client, onUpdateClient, onLog, isDriveReady }) => {
+export const Settings: React.FC<SettingsProps> = ({ client, onUpdateClient, onLog, isDriveReady, isAuthenticated, onLogin }) => {
   const [formData, setFormData] = useState<Client>(client);
   const [hasChanges, setHasChanges] = useState(false);
   const [isCreatingFolders, setIsCreatingFolders] = useState(false);
@@ -47,8 +49,6 @@ export const Settings: React.FC<SettingsProps> = ({ client, onUpdateClient, onLo
     onLog('UPDATE', 'SETTINGS', `Aggiornata anagrafica`, client.id);
     setHasChanges(false);
     setErrorMsg(null);
-
-    const isDriveAuth = typeof window !== 'undefined' && (window as any).gapi?.client?.getToken() !== null;
     
     if (confirm(`Vuoi sincronizzare le cartelle e il Database Cloud per questo cliente?`)) {
       if (!isDriveReady) {
@@ -58,7 +58,8 @@ export const Settings: React.FC<SettingsProps> = ({ client, onUpdateClient, onLo
 
       setIsCreatingFolders(true);
       try {
-        await handleAuthClick();
+        if (!isAuthenticated) await onLogin();
+        
         const result = await createClientStructure(formData.name);
         
         const updatedClient = { 
@@ -89,6 +90,16 @@ export const Settings: React.FC<SettingsProps> = ({ client, onUpdateClient, onLo
           Salva Modifiche
         </Button>
       </div>
+
+      {!isAuthenticated && (
+        <div className="bg-amber-50 border border-amber-200 p-4 rounded-lg flex items-center justify-between text-amber-800">
+           <div className="flex items-center gap-3">
+             <Lock className="w-5 h-5 text-amber-600" />
+             <p className="text-sm font-medium">L'accesso Google non è attivo. Effettua il login per abilitare le funzioni Cloud.</p>
+           </div>
+           <Button onClick={onLogin} size="sm" variant="secondary">Login Studio</Button>
+        </div>
+      )}
 
       {errorMsg && (
         <div className="bg-red-50 border-l-4 border-red-500 p-5 rounded-lg flex gap-4 text-red-800 animate-fade-in shadow-sm">
