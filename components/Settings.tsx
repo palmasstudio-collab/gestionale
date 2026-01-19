@@ -4,7 +4,7 @@ import { Client, TaxRate, LogActionType, LogEntityType } from '../types';
 import { ATECO_ACTIVITIES } from '../constants';
 import { Card } from './Card';
 import { Button } from './Button';
-import { Save, Loader2, Database, CheckCircle, XCircle } from 'lucide-react';
+import { Save, Loader2, Database, CheckCircle, XCircle, AlertCircle, ExternalLink } from 'lucide-react';
 import { createClientStructure, handleAuthClick } from '../utils/googleDrive';
 
 interface SettingsProps {
@@ -18,10 +18,12 @@ export const Settings: React.FC<SettingsProps> = ({ client, onUpdateClient, onLo
   const [formData, setFormData] = useState<Client>(client);
   const [hasChanges, setHasChanges] = useState(false);
   const [isCreatingFolders, setIsCreatingFolders] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   useEffect(() => {
     setFormData(client);
     setHasChanges(false);
+    setErrorMsg(null);
   }, [client.id, client.spreadsheetId]);
   
   const handleActivityChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -44,33 +46,32 @@ export const Settings: React.FC<SettingsProps> = ({ client, onUpdateClient, onLo
     onUpdateClient(formData);
     onLog('UPDATE', 'SETTINGS', `Aggiornata anagrafica`, client.id);
     setHasChanges(false);
+    setErrorMsg(null);
 
     const isDriveAuth = typeof window !== 'undefined' && (window as any).gapi?.client?.getToken() !== null;
     
-    if (confirm(`Dati salvati in locale.\n\nVuoi creare la struttura cartelle e il DATABASE EXCEL su Google Drive per questo cliente?`)) {
+    if (confirm(`Dati salvati localmente.\n\nVuoi attivare ora la sincronizzazione Google Drive e creare il Database Excel per questo cliente?`)) {
       if (!isDriveReady) {
-        alert("Servizi Google in fase di inizializzazione... Riprova tra pochi secondi.");
+        alert("Sincronizzazione API in corso... Attendi 2 secondi.");
         return;
       }
 
       setIsCreatingFolders(true);
       try {
-        if (!isDriveAuth) {
-          await handleAuthClick();
-        }
+        // Forza sempre il check di autorizzazione se proviamo a creare la struttura
+        await handleAuthClick();
         
         const result = await createClientStructure(formData.name);
         
-        // Salviamo lo spreadsheetId nel profilo del cliente
         const updatedClient = { ...formData, spreadsheetId: result.spreadsheetId };
         onUpdateClient(updatedClient);
         setFormData(updatedClient);
         
-        alert('Struttura cartelle e Database Excel creati con successo!');
+        alert('Configurazione Cloud completata con successo!');
       } catch (err: any) {
-        if (err.error !== 'access_denied') {
-          alert('Errore sincronizzazione Drive: ' + (err.message || 'Verifica la connessione o l\'accesso Google.'));
-        }
+        console.error("Errore critico Cloud:", err);
+        const msg = err.message || "Impossibile contattare i server Google.";
+        setErrorMsg(msg);
       } finally {
         setIsCreatingFolders(false);
       }
@@ -88,6 +89,33 @@ export const Settings: React.FC<SettingsProps> = ({ client, onUpdateClient, onLo
           Salva Modifiche
         </Button>
       </div>
+
+      {errorMsg && (
+        <div className="bg-red-50 border-l-4 border-red-500 p-5 rounded-lg flex gap-4 text-red-800 animate-fade-in shadow-sm">
+           <AlertCircle className="w-6 h-6 flex-shrink-0" />
+           <div className="space-y-3">
+             <p className="font-bold text-lg">Errore di Sincronizzazione Cloud</p>
+             <p className="text-sm bg-white/50 p-2 rounded border border-red-200 font-mono">{errorMsg}</p>
+             
+             <div className="text-sm space-y-2">
+               <p className="font-semibold">Possibili soluzioni:</p>
+               <ul className="list-disc list-inside space-y-1 opacity-90">
+                 <li>Abilita le <strong>Google Sheets API</strong> nella Console di Google.</li>
+                 <li>Assicurati di spuntare la casella <strong>"Visualizza, modifica, crea... fogli di calcolo"</strong> nel popup di Google.</li>
+                 <li>Riprova a cliccare su Salva per rigenerare il token.</li>
+               </ul>
+             </div>
+             
+             <a 
+               href="https://console.cloud.google.com/apis/library/sheets.googleapis.com" 
+               target="_blank" 
+               className="inline-flex items-center text-xs font-bold text-red-600 hover:underline bg-white px-3 py-1.5 rounded-md border border-red-200"
+             >
+               <ExternalLink className="w-3 h-3 mr-1" /> Vai alla Console Google per abilitare Sheets
+             </a>
+           </div>
+        </div>
+      )}
       
       <Card title="Attività Professionale (ATECO)" className="border-t-4 border-t-indigo-600">
         <div className="space-y-6">
@@ -118,18 +146,18 @@ export const Settings: React.FC<SettingsProps> = ({ client, onUpdateClient, onLo
               </select>
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Stato Database Cloud (Sheets)</label>
+              <label className="block text-xs font-medium text-gray-500 mb-1">Infrastruttura Cloud Studio</label>
               <div className={`p-2 rounded border flex items-center gap-2 ${formData.spreadsheetId ? 'bg-green-50 border-green-200 text-green-700' : 'bg-gray-50 border-gray-200 text-gray-400'}`}>
                 <Database className="w-4 h-4" />
                 <span className="text-xs font-bold truncate">
-                  {formData.spreadsheetId ? 'Sincronizzato' : 'Nessun DB collegato'}
+                  {formData.spreadsheetId ? 'Database Excel Attivo' : 'Cloud non inizializzato'}
                 </span>
                 {formData.spreadsheetId ? <CheckCircle className="w-3 h-3 ml-auto text-green-500" /> : <XCircle className="w-3 h-3 ml-auto text-gray-300" />}
               </div>
             </div>
           </div>
 
-          <textarea name="notes" value={formData.notes || ''} onChange={handleChange} className="w-full rounded-md border-gray-300 border p-2 h-24" placeholder="Note interne..." />
+          <textarea name="notes" value={formData.notes || ''} onChange={handleChange} className="w-full rounded-md border-gray-300 border p-2 h-24" placeholder="Note interne per lo studio..." />
         </form>
       </Card>
     </div>
