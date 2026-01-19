@@ -4,8 +4,8 @@ import { Invoice, PaymentStatus, Client, LogActionType, LogEntityType } from '..
 import { ATECO_ACTIVITIES } from '../constants';
 import { Card } from './Card';
 import { Button } from './Button';
-import { Plus, X, DollarSign, CloudSync, RefreshCw, AlertCircle } from 'lucide-react';
-import { syncInvoiceToSpreadsheet, handleAuthClick } from '../utils/googleDrive';
+import { Plus, X, DollarSign, CloudSync, RefreshCw, AlertCircle, Paperclip, FileCheck, Loader2 } from 'lucide-react';
+import { syncInvoiceToSpreadsheet, handleAuthClick, findSubfolderId, uploadFileToDrive } from '../utils/googleDrive';
 
 interface InvoiceManagerProps {
   client: Client;
@@ -17,6 +17,9 @@ interface InvoiceManagerProps {
 export const InvoiceManager: React.FC<InvoiceManagerProps> = ({ client, allInvoices, setAllInvoices, onLog }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   
   const activityConfig = ATECO_ACTIVITIES.find(a => a.id === client.activityId);
 
@@ -36,92 +39,66 @@ export const InvoiceManager: React.FC<InvoiceManagerProps> = ({ client, allInvoi
     }
   }, [newInvoice.taxableAmount, activityConfig]);
 
-  const clientInvoices = allInvoices.filter(inv => inv.clientId === client.id);
-
   const handleAddInvoice = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newInvoice.number || !newInvoice.clientName || !newInvoice.date) return;
 
-    const invoice: Invoice = {
-      id: Date.now().toString(),
-      clientId: client.id,
-      number: newInvoice.number,
-      clientName: newInvoice.clientName,
-      date: newInvoice.date,
-      status: newInvoice.status as PaymentStatus,
-      paymentDate: newInvoice.status === PaymentStatus.PAID ? (newInvoice.paymentDate || newInvoice.date) : undefined,
-      taxableAmount: Number(newInvoice.taxableAmount),
-      cassaAmount: Number(newInvoice.cassaAmount),
-      amount: Number(newInvoice.amount),
-    };
-
-    setAllInvoices(prev => [...prev, invoice]);
-    onLog('CREATE', 'INVOICE', `Creata fattura n. ${invoice.number} per ${invoice.clientName}`, client.id);
-
-    // --- SINCRONIZZAZIONE AUTOMATICA SHEETS ---
-    if (client.spreadsheetId) {
-      setIsSyncing(true);
-      try {
-        const isDriveAuth = typeof window !== 'undefined' && (window as any).gapi?.client?.getToken() !== null;
-        if (!isDriveAuth) await handleAuthClick();
-        await syncInvoiceToSpreadsheet(client.spreadsheetId, invoice);
-      } catch (err) {
-        console.error("Sincronizzazione fallita:", err);
-      } finally {
-        setIsSyncing(false);
-      }
-    }
-
-    setIsAdding(false);
-    setNewInvoice({
-      status: PaymentStatus.PAID, date: new Date().toISOString().split('T')[0],
-      paymentDate: new Date().toISOString().split('T')[0], number: '', clientName: '',
-      taxableAmount: 0, cassaAmount: 0, amount: 0
-    });
-  };
-
-  const handleMassSync = async () => {
-    if (!client.spreadsheetId) {
-      alert("Crea prima il database in Anagrafica.");
-      return;
-    }
-
-    if (!confirm(`Vuoi esportare tutte le ${clientInvoices.length} fatture attuali nel database Google Sheets?`)) return;
-
     setIsSyncing(true);
+    let driveFileId: string | undefined = undefined;
+
     try {
       const isDriveAuth = typeof window !== 'undefined' && (window as any).gapi?.client?.getToken() !== null;
       if (!isDriveAuth) await handleAuthClick();
-      
-      for (const inv of clientInvoices) {
-        await syncInvoiceToSpreadsheet(client.spreadsheetId, inv);
+
+      // 1. Caricamento File PDF se presente
+      if (selectedFile && client.rootFolderId) {
+        setUploadingFile(true);
+        const folderId = await findSubfolderId(client.rootFolderId, '01_Fatture_Emesse');
+        if (folderId) {
+          driveFileId = await uploadFileToDrive(selectedFile, folderId);
+        }
       }
-      alert("Tutte le fatture sono state sincronizzate nel database Excel!");
+
+      const invoice: Invoice = {
+        id: Date.now().toString(),
+        clientId: client.id,
+        number: newInvoice.number,
+        clientName: newInvoice.clientName,
+        date: newInvoice.date,
+        status: newInvoice.status as PaymentStatus,
+        paymentDate: newInvoice.status === PaymentStatus.PAID ? (newInvoice.paymentDate || newInvoice.date) : undefined,
+        taxableAmount: Number(newInvoice.taxableAmount),
+        cassaAmount: Number(newInvoice.cassaAmount),
+        amount: Number(newInvoice.amount),
+        fileName: selectedFile?.name,
+        driveFileId
+      };
+
+      setAllInvoices(prev => [...prev, invoice]);
+      onLog('CREATE', 'INVOICE', `Creata fattura n. ${invoice.number} ${driveFileId ? '(con PDF)' : ''}`, client.id);
+
+      // 2. Sincronizzazione Sheets
+      if (client.spreadsheetId) {
+        await syncInvoiceToSpreadsheet(client.spreadsheetId, invoice);
+      }
+
+      setIsAdding(false);
+      setSelectedFile(null);
+      setNewInvoice({
+        status: PaymentStatus.PAID, date: new Date().toISOString().split('T')[0],
+        paymentDate: new Date().toISOString().split('T')[0], number: '', clientName: '',
+        taxableAmount: 0, cassaAmount: 0, amount: 0
+      });
     } catch (err) {
-      alert("Errore durante la sincronizzazione massiva.");
+      console.error("Errore salvataggio fattura:", err);
+      alert("Errore durante il salvataggio o l'upload del PDF.");
     } finally {
       setIsSyncing(false);
+      setUploadingFile(false);
     }
   };
 
-  const toggleStatus = (id: string) => {
-    setAllInvoices(prev => prev.map(inv => {
-      if (inv.id === id) {
-        const newStatus = inv.status === PaymentStatus.PAID ? PaymentStatus.PENDING : PaymentStatus.PAID;
-        onLog('STATUS_CHANGE', 'INVOICE', `Cambio stato fattura n. ${inv.number}`, client.id);
-        return { ...inv, status: newStatus, paymentDate: newStatus === PaymentStatus.PAID ? new Date().toISOString().split('T')[0] : undefined };
-      }
-      return inv;
-    }));
-  };
-
-  const deleteInvoice = (id: string) => {
-    const inv = allInvoices.find(i => i.id === id);
-    if (inv && window.confirm('Sei sicuro di voler eliminare questa fattura?')) {
-      setAllInvoices(prev => prev.filter(inv => inv.id !== id));
-      onLog('DELETE', 'INVOICE', `Eliminata fattura n. ${inv.number}`, client.id);
-    }
-  };
+  const clientInvoices = allInvoices.filter(inv => inv.clientId === client.id);
 
   return (
     <div className="space-y-6">
@@ -131,12 +108,6 @@ export const InvoiceManager: React.FC<InvoiceManagerProps> = ({ client, allInvoi
            <p className="text-sm text-gray-500">Configurazione: {activityConfig?.code || 'N.D.'}</p>
         </div>
         <div className="flex items-center gap-2">
-           {client.spreadsheetId && (
-             <Button variant="secondary" size="sm" onClick={handleMassSync} disabled={isSyncing}>
-                {isSyncing ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <CloudSync className="w-4 h-4 mr-2" />}
-                Sincronizza Database
-             </Button>
-           )}
            <Button onClick={() => setIsAdding(!isAdding)}>
             <Plus className="w-4 h-4 mr-2" />
             Nuova Fattura
@@ -144,30 +115,32 @@ export const InvoiceManager: React.FC<InvoiceManagerProps> = ({ client, allInvoi
         </div>
       </div>
 
-      {!client.spreadsheetId && (
+      {!client.rootFolderId && (
         <div className="bg-amber-50 border border-amber-200 p-4 rounded-lg flex items-center gap-3 text-amber-800">
            <AlertCircle className="w-5 h-5 flex-shrink-0" />
-           <p className="text-sm">Il <strong>Database Excel</strong> non è ancora stato creato per questo cliente. Vai in <strong>Anagrafica</strong> e clicca su <strong>Salva Modifiche</strong> per inizializzarlo.</p>
+           <p className="text-sm">Attenzione: Le cartelle Cloud non sono attive. Vai in <strong>Anagrafica</strong> e salva per abilitare l'archiviazione PDF.</p>
         </div>
       )}
 
       {isAdding && (
         <Card title="Nuova Fattura" className="mb-6 animate-fade-in border-t-4 border-t-indigo-500">
-          <form onSubmit={handleAddInvoice} className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-4">
-            <div className="lg:col-span-3">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Numero</label>
-              <input type="text" required className="w-full rounded-md border-gray-300 border p-2" placeholder="es. 10/2024" value={newInvoice.number || ''} onChange={e => setNewInvoice({...newInvoice, number: e.target.value})} />
-            </div>
-            <div className="lg:col-span-6">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Cliente Finale</label>
-              <input type="text" required className="w-full rounded-md border-gray-300 border p-2" placeholder="Nome Cliente" value={newInvoice.clientName || ''} onChange={e => setNewInvoice({...newInvoice, clientName: e.target.value})} />
-            </div>
-            <div className="lg:col-span-3">
-              <label className="block text-sm font-medium text-gray-700 mb-1">Data</label>
-              <input type="date" required className="w-full rounded-md border-gray-300 border p-2" value={newInvoice.date || ''} onChange={e => setNewInvoice({...newInvoice, date: e.target.value})} />
+          <form onSubmit={handleAddInvoice} className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-4">
+              <div className="md:col-span-3">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Numero</label>
+                <input type="text" required className="w-full rounded-md border-gray-300 border p-2" placeholder="es. 10/2024" value={newInvoice.number || ''} onChange={e => setNewInvoice({...newInvoice, number: e.target.value})} />
+              </div>
+              <div className="md:col-span-6">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Cliente Finale</label>
+                <input type="text" required className="w-full rounded-md border-gray-300 border p-2" placeholder="Nome Cliente" value={newInvoice.clientName || ''} onChange={e => setNewInvoice({...newInvoice, clientName: e.target.value})} />
+              </div>
+              <div className="md:col-span-3">
+                <label className="block text-sm font-medium text-gray-700 mb-1">Data</label>
+                <input type="date" required className="w-full rounded-md border-gray-300 border p-2" value={newInvoice.date || ''} onChange={e => setNewInvoice({...newInvoice, date: e.target.value})} />
+              </div>
             </div>
 
-            <div className="lg:col-span-12 bg-gray-50 p-4 rounded-lg grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="bg-gray-50 p-4 rounded-lg grid grid-cols-1 md:grid-cols-3 gap-6">
                <div>
                   <label className="block text-sm font-bold text-gray-700 mb-1">Compenso (€)</label>
                   <input type="number" required step="0.01" className="w-full rounded-md border-gray-300 border p-2 text-lg" value={newInvoice.taxableAmount || ''} onChange={e => setNewInvoice({...newInvoice, taxableAmount: Number(e.target.value)})} />
@@ -182,12 +155,36 @@ export const InvoiceManager: React.FC<InvoiceManagerProps> = ({ client, allInvoi
                </div>
             </div>
 
-            <div className="lg:col-span-12 flex justify-end gap-2 mt-2">
-              <Button type="button" variant="secondary" onClick={() => setIsAdding(false)}>Annulla</Button>
-              <Button type="submit">
-                {isSyncing && <RefreshCw className="w-4 h-4 mr-2 animate-spin" />}
-                Salva Fattura
-              </Button>
+            <div className="border-t pt-4 flex flex-col md:flex-row items-center gap-4">
+               <div className="flex-1 w-full">
+                 <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
+                   <Paperclip className="w-4 h-4" /> Allega Fattura PDF (Cloud)
+                 </label>
+                 <input 
+                   type="file" 
+                   accept="application/pdf" 
+                   ref={fileInputRef} 
+                   onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
+                   className="hidden" 
+                 />
+                 <div className="flex items-center gap-3">
+                    <Button type="button" variant="secondary" onClick={() => fileInputRef.current?.click()} disabled={!client.rootFolderId}>
+                       {selectedFile ? 'Cambia PDF' : 'Seleziona PDF'}
+                    </Button>
+                    {selectedFile && (
+                      <span className="text-sm font-medium text-indigo-600 flex items-center gap-1 bg-indigo-50 px-2 py-1 rounded">
+                        <FileCheck className="w-4 h-4" /> {selectedFile.name}
+                      </span>
+                    )}
+                 </div>
+               </div>
+               <div className="flex gap-2">
+                 <Button type="button" variant="secondary" onClick={() => setIsAdding(false)}>Annulla</Button>
+                 <Button type="submit" disabled={isSyncing}>
+                   {isSyncing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-2" />}
+                   Salva & Archivia
+                 </Button>
+               </div>
             </div>
           </form>
         </Card>
@@ -199,29 +196,36 @@ export const InvoiceManager: React.FC<InvoiceManagerProps> = ({ client, allInvoi
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Stato</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data</th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Numero</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Fattura</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Cliente</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-900 uppercase tracking-wider">Totale</th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Azioni</th>
+                <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Doc. Cloud</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {clientInvoices.length === 0 ? (
-                 <tr><td colSpan={6} className="px-6 py-8 text-center text-gray-500">Nessuna fattura presente.</td></tr>
+                 <tr><td colSpan={5} className="px-6 py-8 text-center text-gray-500">Nessuna fattura presente.</td></tr>
               ) : (
                 clientInvoices.map((inv) => (
                   <tr key={inv.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${inv.status === PaymentStatus.PAID ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>{inv.status}</span>
                     </td>
-                    <td className="px-6 py-4 text-sm text-gray-500">{new Date(inv.date).toLocaleDateString('it-IT')}</td>
-                    <td className="px-6 py-4 text-sm font-medium text-gray-900">{inv.number}</td>
+                    <td className="px-6 py-4">
+                      <div className="text-sm font-medium text-gray-900">{inv.number}</div>
+                      <div className="text-xs text-gray-400">{new Date(inv.date).toLocaleDateString('it-IT')}</div>
+                    </td>
                     <td className="px-6 py-4 text-sm text-gray-900">{inv.clientName}</td>
                     <td className="px-6 py-4 text-right text-sm font-bold text-gray-900">€ {inv.amount.toFixed(2)}</td>
-                    <td className="px-6 py-4 text-right text-sm font-medium flex justify-end gap-2">
-                      <button onClick={() => toggleStatus(inv.id)} className="p-1 text-indigo-600 hover:bg-indigo-50 rounded" title="Cambia Stato Pagamento"><DollarSign className="w-4 h-4" /></button>
-                      <button onClick={() => deleteInvoice(inv.id)} className="p-1 text-red-600 hover:bg-red-50 rounded" title="Elimina"><X className="w-4 h-4" /></button>
+                    <td className="px-6 py-4 text-center">
+                       {inv.driveFileId ? (
+                         <div className="text-green-600 flex items-center justify-center gap-1" title="File archiviato su Drive">
+                           <FileCheck className="w-5 h-5" />
+                           <span className="text-[10px] font-bold">PDF</span>
+                         </div>
+                       ) : (
+                         <span className="text-gray-300">-</span>
+                       )}
                     </td>
                   </tr>
                 ))
