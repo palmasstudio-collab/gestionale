@@ -38,6 +38,7 @@ export interface Client {
   notes?: string;
   status: ClientStatus;
   spreadsheetId?: string; // ID del foglio Google "Database"
+  rootFolderId?: string; // ID della cartella radice del cliente su Drive
 }
 
 export interface GlobalTaxConfig {
@@ -58,6 +59,7 @@ export interface Invoice {
   paymentDate?: string;
   attachment?: string;
   fileName?: string;
+  driveFileId?: string; // ID del file PDF su Google Drive
 }
 
 export interface InpsPayment {
@@ -68,6 +70,7 @@ export interface InpsPayment {
   description?: string;
   attachment?: string;
   fileName?: string;
+  driveFileId?: string; // ID del file F24 su Google Drive
 }
 
 export interface TaxCalculationResult {
