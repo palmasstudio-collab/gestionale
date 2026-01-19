@@ -1,36 +1,21 @@
 
 import React, { useState, useRef } from 'react';
-import { InpsPayment, LogActionType, LogEntityType } from '../types';
+import { InpsPayment, LogActionType, LogEntityType, Client } from '../types';
 import { Card } from './Card';
 import { Button } from './Button';
-import { Plus, Trash2, Landmark, Paperclip, FileText, X } from 'lucide-react';
+import { Plus, Trash2, Landmark, Paperclip, FileText, X, FileCheck, Loader2 } from 'lucide-react';
+import { handleAuthClick, findSubfolderId, uploadFileToDrive } from '../utils/googleDrive';
 
 interface InpsManagerProps {
   clientId: string;
   payments: InpsPayment[];
   setPayments: React.Dispatch<React.SetStateAction<InpsPayment[]>>;
   onLog: (action: LogActionType, entity: LogEntityType, description: string, clientId?: string) => void;
+  client?: Client; // Passiamo il client per avere rootFolderId
 }
 
-// Helper to convert base64 to blob
-const base64ToBlob = (base64: string) => {
-  try {
-    const arr = base64.split(',');
-    const mime = arr[0].match(/:(.*?);/)?.[1] || 'application/octet-stream';
-    const bstr = atob(arr[1]);
-    let n = bstr.length;
-    const u8arr = new Uint8Array(n);
-    while (n--) {
-      u8arr[n] = bstr.charCodeAt(n);
-    }
-    return new Blob([u8arr], { type: mime });
-  } catch (e) {
-    console.error("Error converting base64 to blob", e);
-    return null;
-  }
-};
-
-export const InpsManager: React.FC<InpsManagerProps> = ({ clientId, payments, setPayments, onLog }) => {
+export const InpsManager: React.FC<InpsManagerProps> = ({ clientId, payments, setPayments, onLog, client }) => {
+  const [isSaving, setIsSaving] = useState(false);
   const [newPayment, setNewPayment] = useState<Partial<InpsPayment>>({
     date: new Date().toISOString().split('T')[0],
     amount: 0,
@@ -39,6 +24,7 @@ export const InpsManager: React.FC<InpsManagerProps> = ({ clientId, payments, se
     attachment: undefined
   });
   
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const clientPayments = payments.filter(p => p.clientId === clientId).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
@@ -47,49 +33,46 @@ export const InpsManager: React.FC<InpsManagerProps> = ({ clientId, payments, se
     .filter(p => new Date(p.date).getFullYear() === currentYear)
     .reduce((sum, p) => sum + p.amount, 0);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setNewPayment(prev => ({
-          ...prev,
-          fileName: file.name,
-          attachment: reader.result as string
-        }));
-      };
-      reader.readAsDataURL(file);
-    }
-  };
-
-  const handleAdd = (e: React.FormEvent) => {
+  const handleAdd = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newPayment.date || !newPayment.amount) return;
 
-    const payment: InpsPayment = {
-      id: Date.now().toString(),
-      clientId,
-      date: newPayment.date,
-      amount: Number(newPayment.amount),
-      description: newPayment.description || 'Versamento INPS',
-      attachment: newPayment.attachment,
-      fileName: newPayment.fileName
-    };
+    setIsSaving(true);
+    let driveFileId: string | undefined = undefined;
 
-    setPayments(prev => [...prev, payment]);
-    onLog('CREATE', 'PAYMENT', `Registrato versamento € ${payment.amount} (${payment.description})`, clientId);
-    
-    // Reset form
-    setNewPayment({
-      date: new Date().toISOString().split('T')[0],
-      amount: 0,
-      description: '',
-      fileName: undefined,
-      attachment: undefined
-    });
-    
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+    try {
+      // 1. Upload Cloud Ricevuta
+      if (selectedFile && client?.rootFolderId) {
+        const isDriveAuth = typeof window !== 'undefined' && (window as any).gapi?.client?.getToken() !== null;
+        if (!isDriveAuth) await handleAuthClick();
+
+        const folderId = await findSubfolderId(client.rootFolderId, '03_F24_Tasse_INPS');
+        if (folderId) {
+          driveFileId = await uploadFileToDrive(selectedFile, folderId);
+        }
+      }
+
+      const payment: InpsPayment = {
+        id: Date.now().toString(),
+        clientId,
+        date: newPayment.date,
+        amount: Number(newPayment.amount),
+        description: newPayment.description || 'Versamento INPS',
+        fileName: selectedFile?.name,
+        driveFileId
+      };
+
+      setPayments(prev => [...prev, payment]);
+      onLog('CREATE', 'PAYMENT', `Registrato versamento € ${payment.amount} ${driveFileId ? '(Ricevuta Cloud)' : ''}`, clientId);
+      
+      // Reset
+      setNewPayment({ date: new Date().toISOString().split('T')[0], amount: 0, description: '' });
+      setSelectedFile(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    } catch (err) {
+      alert("Errore caricamento ricevuta su Drive.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -99,27 +82,6 @@ export const InpsManager: React.FC<InpsManagerProps> = ({ clientId, payments, se
       setPayments(prev => prev.filter(p => p.id !== id));
       onLog('DELETE', 'PAYMENT', `Eliminato versamento € ${p?.amount}`, clientId);
     }
-  };
-
-  const downloadAttachment = (p: InpsPayment) => {
-    if (!p.attachment) return;
-    
-    const blob = base64ToBlob(p.attachment);
-    if (!blob) {
-      alert("Errore nel file allegato");
-      return;
-    }
-
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = p.fileName || `Ricevuta_INPS_${p.date}.pdf`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    
-    // Increased timeout to ensure download starts before cleanup
-    setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
   return (
@@ -136,69 +98,38 @@ export const InpsManager: React.FC<InpsManagerProps> = ({ clientId, payments, se
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Data Pagamento</label>
-              <input 
-                type="date"
-                required
-                className="w-full rounded-md border-gray-300 border p-2 focus:ring-indigo-500"
-                value={newPayment.date}
-                onChange={e => setNewPayment({...newPayment, date: e.target.value})}
-              />
+              <input type="date" required className="w-full rounded-md border-gray-300 border p-2 focus:ring-indigo-500" value={newPayment.date} onChange={e => setNewPayment({...newPayment, date: e.target.value})} />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Importo (€)</label>
-              <input 
-                type="number"
-                step="0.01"
-                required
-                className="w-full rounded-md border-gray-300 border p-2 focus:ring-indigo-500"
-                value={newPayment.amount || ''}
-                onChange={e => setNewPayment({...newPayment, amount: Number(e.target.value)})}
-              />
+              <input type="number" step="0.01" required className="w-full rounded-md border-gray-300 border p-2 focus:ring-indigo-500" value={newPayment.amount || ''} onChange={e => setNewPayment({...newPayment, amount: Number(e.target.value)})} />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Descrizione</label>
-              <input 
-                type="text"
-                className="w-full rounded-md border-gray-300 border p-2 focus:ring-indigo-500"
-                placeholder="es. Saldo 2023, Acconto..."
-                value={newPayment.description}
-                onChange={e => setNewPayment({...newPayment, description: e.target.value})}
-              />
+              <input type="text" className="w-full rounded-md border-gray-300 border p-2 focus:ring-indigo-500" placeholder="es. Saldo 2023, Acconto..." value={newPayment.description} onChange={e => setNewPayment({...newPayment, description: e.target.value})} />
             </div>
           </div>
 
           <div className="flex items-center gap-4">
              <div className="flex-1">
-               <label className="block text-sm font-medium text-gray-700 mb-1">Allegato (Ricevuta F24)</label>
+               <label className="block text-sm font-medium text-gray-700 mb-1">Ricevuta Cloud (PDF F24)</label>
                <div className="flex items-center gap-2">
-                 <input 
-                   type="file" 
-                   ref={fileInputRef}
-                   accept=".pdf,image/*"
-                   onChange={handleFileChange}
-                   className="hidden"
-                 />
-                 <Button type="button" variant="secondary" onClick={() => fileInputRef.current?.click()} size="sm">
+                 <input type="file" ref={fileInputRef} accept=".pdf,image/*" onChange={(e) => setSelectedFile(e.target.files?.[0] || null)} className="hidden" />
+                 <Button type="button" variant="secondary" onClick={() => fileInputRef.current?.click()} size="sm" disabled={!client?.rootFolderId}>
                    <Paperclip className="w-4 h-4 mr-2" />
-                   {newPayment.fileName ? 'Cambia File' : 'Carica PDF'}
+                   {selectedFile ? 'Cambia File' : 'Carica PDF Ricevuta'}
                  </Button>
-                 {newPayment.fileName && (
-                   <span className="text-sm text-gray-600 flex items-center bg-gray-100 px-2 py-1 rounded">
-                     {newPayment.fileName}
-                     <button 
-                       type="button"
-                       className="ml-2 text-gray-400 hover:text-red-500"
-                       onClick={() => setNewPayment(prev => ({ ...prev, fileName: undefined, attachment: undefined }))}
-                     >
-                       <X className="w-3 h-3" />
-                     </button>
+                 {selectedFile && (
+                   <span className="text-sm text-indigo-600 flex items-center bg-indigo-50 px-2 py-1 rounded">
+                     {selectedFile.name}
+                     <button type="button" className="ml-2 text-gray-400 hover:text-red-500" onClick={() => setSelectedFile(null)}><X className="w-3 h-3" /></button>
                    </span>
                  )}
                </div>
              </div>
              <div className="flex items-end">
-                <Button type="submit">
-                  <Plus className="w-4 h-4 mr-2" />
+                <Button type="submit" disabled={isSaving}>
+                  {isSaving ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Plus className="w-4 h-4 mr-2" />}
                   Aggiungi
                 </Button>
              </div>
@@ -214,38 +145,31 @@ export const InpsManager: React.FC<InpsManagerProps> = ({ clientId, payments, se
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Data</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Descrizione</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Importo</th>
-                <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Allegato</th>
+                <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Doc. Cloud</th>
                 <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Azioni</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {clientPayments.length === 0 ? (
-                <tr>
-                  <td colSpan={5} className="px-6 py-8 text-center text-gray-500">Nessun versamento registrato.</td>
-                </tr>
+                <tr><td colSpan={5} className="px-6 py-8 text-center text-gray-500">Nessun versamento registrato.</td></tr>
               ) : (
                 clientPayments.map(p => (
                   <tr key={p.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {new Date(p.date).toLocaleDateString('it-IT')}
-                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{new Date(p.date).toLocaleDateString('it-IT')}</td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{p.description}</td>
-                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-bold text-gray-900">
-                      € {p.amount.toFixed(2)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-center">
-                       {p.attachment ? (
-                         <button onClick={() => downloadAttachment(p)} className="text-indigo-600 hover:text-indigo-800" title={p.fileName}>
-                           <FileText className="w-5 h-5" />
-                         </button>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-bold text-gray-900">€ {p.amount.toFixed(2)}</td>
+                    <td className="px-6 py-4 text-center">
+                       {p.driveFileId ? (
+                         <div className="text-green-600 flex items-center justify-center gap-1">
+                           <FileCheck className="w-5 h-5" />
+                           <span className="text-[10px] font-bold">PDF</span>
+                         </div>
                        ) : (
                          <span className="text-gray-300">-</span>
                        )}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right">
-                      <button onClick={() => deletePayment(p.id)} className="text-red-600 hover:text-red-900">
-                        <Trash2 className="w-5 h-5" />
-                      </button>
+                      <button onClick={() => deletePayment(p.id)} className="text-red-600 hover:text-red-900"><Trash2 className="w-5 h-5" /></button>
                     </td>
                   </tr>
                 ))
