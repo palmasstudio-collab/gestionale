@@ -12,7 +12,7 @@ export const ATECO_ACTIVITIES: AtecoActivity[] = [
   {
     id: 'act_psychologist_enpap',
     code: '86.90.30',
-    description: 'Psicologo (Cassa ENPAP)',
+    description: 'Psicologo (Cassa "ENPAP")',
     coefficient: 0.78,
     inpsType: 'ENPAP',
     vatRegime: 'Esente art. 10 DPR 633/72',
